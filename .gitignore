@@ -19,3 +19,7 @@ coverage
 
 # Runtime
 *.log
+
+# WhatsApp
+.wwebjs_auth
+.wwebjs_cache
