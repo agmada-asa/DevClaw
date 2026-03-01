@@ -25,6 +25,18 @@ client.on('ready', () => {
     console.log('[WhatsApp] Client is ready!');
 });
 
+const WELCOME_MESSAGE = `Welcome to DevClaw! 🚀
+
+Here is how to get started:
+1. Use /login to link your GitHub account.
+2. Use /repo <owner>/<repo> to link the repository you want to work on.
+3. Use /task (or /request) followed by your description to create new tasks/issues.
+
+Other useful commands:
+/status - Check your current login and linked repository status.
+/repos - List the GitHub repositories you have access to.
+/help - Show this message again.`;
+
 export const handleMessage = async (message: any) => {
     // Ignore updates from statuses
     if (message.isStatus) return;
@@ -53,7 +65,11 @@ export const handleMessage = async (message: any) => {
         }
 
         const loginUrl = `${baseUrl}/api/auth/github?userId=${userId}&provider=whatsapp`;
-        return message.reply(`Please click this link to link your GitHub account: ${loginUrl}\n\nNote: If you are running locally, make sure the gateway is accessible or update GATEWAY_URL to a public tunnel (e.g. ngrok).`);
+        return message.reply(`Please click this link to link your GitHub account: ${loginUrl}\n\nOnce complete, you can use /status to check your connection or /repo <owner>/<repo> to link a project.\n\nNote: If you are running locally, make sure the gateway is accessible or update GATEWAY_URL to a public tunnel.`);
+    }
+
+    if (text.toLowerCase() === '/start' || text.toLowerCase() === '/help') {
+        return message.reply(WELCOME_MESSAGE);
     }
 
     const isTaskRequest = text.toLowerCase().startsWith('/task ') ||
@@ -65,9 +81,10 @@ export const handleMessage = async (message: any) => {
         text.toLowerCase() === '/repo';
 
     const isReposListRequest = text.toLowerCase() === '/repos';
+    const isStatusRequest = text.toLowerCase() === '/status';
 
-    if (!isTaskRequest && !isRepoLinkRequest && !isReposListRequest) {
-        return message.reply('To submit a new request, please start your message with /request or /task followed by your task description. Use /repo <owner>/<repo> to link a GitHub repository, or /repos to list your repositories. Use /login to authenticate with GitHub.');
+    if (!isTaskRequest && !isRepoLinkRequest && !isReposListRequest && !isStatusRequest) {
+        return message.reply('Invalid command. Please use /help to see the list of available commands and the setup flow.');
     }
 
     try {
@@ -80,7 +97,7 @@ export const handleMessage = async (message: any) => {
             text: text,
             messageId: message.id._serialized,
             timestamp: new Date().toISOString(),
-            type: isReposListRequest ? 'repos' : (isRepoLinkRequest ? 'repo_link' : 'task')
+            type: isReposListRequest ? 'repos' : (isRepoLinkRequest ? 'repo_link' : (isStatusRequest ? 'status' : 'task'))
         };
 
         const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3001/api/ingress/message';
@@ -96,6 +113,8 @@ export const handleMessage = async (message: any) => {
                     replyMessage = 'Repository list request sent to gateway.';
                 } else if (isRepoLinkRequest) {
                     replyMessage = 'Repository link request sent to gateway.';
+                } else if (isStatusRequest) {
+                    replyMessage = 'Status request sent to gateway.';
                 } else {
                     replyMessage = 'Task received and sent to gateway. Evaluating...';
                 }
