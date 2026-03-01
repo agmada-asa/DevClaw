@@ -23,12 +23,14 @@ const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabase
 app.get('/api/auth/github', (req: Request, res: Response): any => {
     const userId = req.query.userId as string;
     const provider = req.query.provider as string;
+    const chatId = req.query.chatId as string;
 
     if (!userId || !provider) {
         return res.status(400).json({ error: 'Missing userId or provider' });
     }
 
-    const state = Buffer.from(JSON.stringify({ userId, provider })).toString('base64');
+    // Encode chatId in state so we can send a proactive message after auth
+    const state = Buffer.from(JSON.stringify({ userId, provider, chatId })).toString('base64');
     const clientId = process.env.GITHUB_CLIENT_ID;
 
     if (!clientId) {
@@ -53,7 +55,7 @@ app.get('/api/auth/github/callback', async (req: Request, res: Response): Promis
 
     try {
         const decodedState = JSON.parse(Buffer.from(state, 'base64').toString('utf-8'));
-        const { userId, provider } = decodedState;
+        const { userId, provider, chatId } = decodedState;
 
         const clientId = process.env.GITHUB_CLIENT_ID;
         const clientSecret = process.env.GITHUB_CLIENT_SECRET;
@@ -92,13 +94,32 @@ app.get('/api/auth/github/callback', async (req: Request, res: Response): Promis
             return res.status(500).send('Database not configured on server');
         }
 
+        // Fire-and-forget: send a proactive confirmation message to the user's chat
+        if (chatId) {
+            const proactiveMessage = `✅ GitHub login successful! You're all set.\n\nNext step: link your repository with /repo <owner>/<repo>, then start submitting tasks with /task <description>.`;
+            let botUrl: string | undefined;
+            if (provider === 'telegram') {
+                botUrl = process.env.TELEGRAM_BOT_URL;
+            } else if (provider === 'whatsapp') {
+                botUrl = process.env.WHATSAPP_BOT_URL;
+            }
+
+            if (botUrl) {
+                axios.post(`${botUrl}/api/send`, { chatId, message: proactiveMessage })
+                    .then(() => console.log(`[Gateway] Sent login confirmation to ${provider} chat ${chatId}`))
+                    .catch((err) => console.error(`[Gateway] Failed to send login confirmation to ${provider}:`, err.message));
+            } else {
+                console.warn(`[Gateway] No bot URL configured for provider: ${provider}. Set ${provider.toUpperCase()}_BOT_URL in .env to enable login confirmations.`);
+            }
+        }
+
         res.send(`
             <html>
                 <head><title>Authentication Successful</title></head>
                 <body style="font-family: sans-serif; text-align: center; padding: 50px;">
-                    <h2>GitHub Authentication Successful!</h2>
+                    <h2>✅ GitHub Authentication Successful!</h2>
                     <p>Your GitHub account has been linked to DevClaw via ${provider}.</p>
-                    <p>You can close this window and return to your chat.</p>
+                    <p><strong>You can close this window and return to your chat</strong> — we've sent you a confirmation message there too.</p>
                 </body>
             </html>
         `);
@@ -129,6 +150,17 @@ app.post('/api/ingress/message', async (req: Request, res: Response): Promise<an
         const repo = parts[1].trim();
 
         if (supabase) {
+            // Check if user is logged in
+            const { data: userData, error: userError } = await supabase
+                .from('user_preferences')
+                .select('github_token')
+                .eq('user_id', userId)
+                .single();
+
+            if (userError || !userData || !userData.github_token) {
+                return res.status(200).json({ success: false, message: 'You need to log in to GitHub first before linking a repository. Use /login to authenticate.' });
+            }
+
             const { error } = await supabase
                 .from('user_preferences')
                 .upsert({ user_id: userId, github_repo: repo }, { onConflict: 'user_id' });
@@ -143,6 +175,32 @@ app.post('/api/ingress/message', async (req: Request, res: Response): Promise<an
         }
 
         return res.status(200).json({ success: true, message: `Successfully linked repository: ${repo}` });
+    }
+
+    if (payload.type === 'status') {
+        if (!supabase) {
+            return res.status(200).json({ success: false, message: 'Database not configured on server' });
+        }
+
+        const { data, error } = await supabase
+            .from('user_preferences')
+            .select('github_token, github_repo')
+            .eq('user_id', userId)
+            .single();
+
+        let statusMessage = '';
+        if (error || !data || !data.github_token) {
+            statusMessage = '🔴 Not logged into GitHub.\nUse /login to authenticate.';
+        } else {
+            statusMessage = '🟢 Logged into GitHub.';
+            if (data.github_repo) {
+                statusMessage += `\n📁 Linked Repository: ${data.github_repo}`;
+            } else {
+                statusMessage += '\n📁 No repository linked.\nUse /repo <owner>/<repo> to link one.';
+            }
+        }
+
+        return res.status(200).json({ success: true, message: statusMessage });
     }
 
     if (payload.type === 'repos') {
@@ -217,7 +275,7 @@ app.post('/api/ingress/message', async (req: Request, res: Response): Promise<an
                     });
 
                     console.log(`[Gateway] Created GitHub issue: ${response.data.html_url}`);
-                    return res.status(200).json({ success: true, message: `GitHub Issue created: ${response.data.html_url}` });
+                    return res.status(200).json({ success: true, message: `Successfully created task in ${repo}:\n${response.data.html_url}` });
                 } catch (error: any) {
                     console.error('[Gateway] Error creating GitHub issue:', error.response?.data || error.message);
                     return res.status(500).json({ error: 'Failed to create GitHub issue. Ensure the repository exists and your token has correct permissions.' });
