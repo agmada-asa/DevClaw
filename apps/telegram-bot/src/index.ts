@@ -1,4 +1,4 @@
-import { Telegraf } from 'telegraf';
+import { Telegraf, Context } from 'telegraf';
 import axios from 'axios';
 import dotenv from 'dotenv';
 
@@ -18,17 +18,30 @@ bot.start((ctx) => {
     ctx.reply('Welcome to DevClaw! Tell me what you want to build or fix.');
 });
 
-bot.on('text', async (ctx) => {
+export const handleTextMessage = async (ctx: Context<any>) => {
+    if (!ctx.message || !('text' in ctx.message)) return;
+
+    const text = ctx.message.text.trim();
+    const isTaskRequest = text.toLowerCase().startsWith('/task ') ||
+        text.toLowerCase() === '/task' ||
+        text.toLowerCase().startsWith('/request ') ||
+        text.toLowerCase() === '/request';
+
+    if (!isTaskRequest) {
+        return ctx.reply('To submit a new request, please start your message with /request or /task followed by your task description.');
+    }
+
     const payload = {
-        chatId: ctx.chat.id,
-        userId: ctx.from.id,
-        username: ctx.from.username,
-        text: ctx.message.text,
+        chatId: ctx.chat?.id,
+        userId: ctx.from?.id,
+        username: ctx.from?.username,
+        text: text,
         messageId: ctx.message.message_id,
         timestamp: new Date().toISOString()
     };
 
     try {
+        const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3001/api/ingress/message';
         const response = await axios.post(GATEWAY_URL, {
             provider: 'telegram',
             payload
@@ -43,7 +56,9 @@ bot.on('text', async (ctx) => {
         console.error('[Telegram] Error forwarding message to gateway:', error);
         ctx.reply('Failed to forward the message to the central system. Please try again later.');
     }
-});
+};
+
+bot.on('text', handleTextMessage);
 
 // For testing purposes, we export the bot but only launch if running directly
 if (require.main === module) {
