@@ -27,8 +27,11 @@ export const handleTextMessage = async (ctx: Context<any>) => {
         text.toLowerCase().startsWith('/request ') ||
         text.toLowerCase() === '/request';
 
-    if (!isTaskRequest) {
-        return ctx.reply('To submit a new request, please start your message with /request or /task followed by your task description.');
+    const isRepoLinkRequest = text.toLowerCase().startsWith('/repo ') ||
+        text.toLowerCase() === '/repo';
+
+    if (!isTaskRequest && !isRepoLinkRequest) {
+        return ctx.reply('To submit a new request, please start your message with /request or /task followed by your task description. Use /repo <owner>/<repo> to link a GitHub repository.');
     }
 
     const payload = {
@@ -37,7 +40,8 @@ export const handleTextMessage = async (ctx: Context<any>) => {
         username: ctx.from?.username,
         text: text,
         messageId: ctx.message.message_id,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        type: isRepoLinkRequest ? 'repo_link' : 'task'
     };
 
     try {
@@ -48,13 +52,15 @@ export const handleTextMessage = async (ctx: Context<any>) => {
         });
 
         if (response.status === 200) {
-            ctx.reply('Task received and sent to gateway. Evaluating...');
+            const replyMessage = response.data?.message || (isRepoLinkRequest ? 'Repository link request sent to gateway.' : 'Task received and sent to gateway. Evaluating...');
+            ctx.reply(replyMessage);
         } else {
-            ctx.reply('Gateway accepted the message, but returned an unexpected status.');
+            const errorMessage = response.data?.error || 'Gateway accepted the message, but returned an unexpected status.';
+            ctx.reply(errorMessage);
         }
-    } catch (error) {
+    } catch (error: any) {
         console.error('[Telegram] Error forwarding message to gateway:', error);
-        ctx.reply('Failed to forward the message to the central system. Please try again later.');
+        ctx.reply(error.response?.data?.error || 'Failed to forward the message to the central system. Please try again later.');
     }
 };
 

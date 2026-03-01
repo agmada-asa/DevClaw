@@ -38,8 +38,11 @@ export const handleMessage = async (message: any) => {
         text.toLowerCase().startsWith('/request ') ||
         text.toLowerCase() === '/request';
 
-    if (!isTaskRequest) {
-        return message.reply('To submit a new request, please start your message with /request or /task followed by your task description.');
+    const isRepoLinkRequest = text.toLowerCase().startsWith('/repo ') ||
+        text.toLowerCase() === '/repo';
+
+    if (!isTaskRequest && !isRepoLinkRequest) {
+        return message.reply('To submit a new request, please start your message with /request or /task followed by your task description. Use /repo <owner>/<repo> to link a GitHub repository.');
     }
 
     try {
@@ -51,7 +54,8 @@ export const handleMessage = async (message: any) => {
             username: contact.pushname || contact.name,
             text: text,
             messageId: message.id._serialized,
-            timestamp: new Date().toISOString()
+            timestamp: new Date().toISOString(),
+            type: isRepoLinkRequest ? 'repo_link' : 'task'
         };
 
         const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3001/api/ingress/message';
@@ -61,14 +65,16 @@ export const handleMessage = async (message: any) => {
         });
 
         if (response.status === 200) {
-            await message.reply('Task received and sent to gateway. Evaluating...');
+            const replyMessage = response.data?.message || (isRepoLinkRequest ? 'Repository link request sent to gateway.' : 'Task received and sent to gateway. Evaluating...');
+            await message.reply(replyMessage);
         } else {
-            await message.reply('Gateway accepted the message, but returned an unexpected status.');
+            const errorMessage = response.data?.error || 'Gateway accepted the message, but returned an unexpected status.';
+            await message.reply(errorMessage);
         }
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('[WhatsApp] Error processing incoming message:', error);
-        await message.reply('Failed to forward the message to the central system. Please try again later.');
+        await message.reply(error.response?.data?.error || 'Failed to forward the message to the central system. Please try again later.');
     }
 };
 
