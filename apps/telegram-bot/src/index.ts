@@ -157,13 +157,14 @@ httpApp.post('/api/send', async (req: express.Request, res: express.Response) =>
     }
 });
 
-// For testing purposes, we export the bot but only launch if running directly
-if (require.main === module) {
-    const BOT_HTTP_PORT = process.env.BOT_HTTP_PORT || 3002;
-    httpApp.listen(BOT_HTTP_PORT, () => {
-        console.log(`[Telegram] Internal HTTP server listening on port ${BOT_HTTP_PORT}`);
-    });
+// Always start the internal HTTP server so the Gateway can send proactive messages
+const BOT_HTTP_PORT = process.env.BOT_HTTP_PORT || 3002;
+httpApp.listen(BOT_HTTP_PORT, () => {
+    console.log(`[Telegram] Internal HTTP server listening on port ${BOT_HTTP_PORT}`);
+});
 
+// Only launch the bot and register shutdown hooks when running directly
+if (require.main === module) {
     bot.launch().then(() => {
         console.log('[Telegram] Bot started.');
     }).catch((err) => {

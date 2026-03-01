@@ -155,13 +155,14 @@ httpApp.post('/api/send', async (req: express.Request, res: express.Response) =>
     }
 });
 
-// For testing purposes, export the client
-if (require.main === module) {
-    const BOT_HTTP_PORT = process.env.BOT_HTTP_PORT || 3003;
-    httpApp.listen(BOT_HTTP_PORT, () => {
-        console.log(`[WhatsApp] Internal HTTP server listening on port ${BOT_HTTP_PORT}`);
-    });
+// Always start the internal HTTP server so the Gateway can send proactive messages
+const BOT_HTTP_PORT = process.env.BOT_HTTP_PORT || 3003;
+httpApp.listen(BOT_HTTP_PORT, () => {
+    console.log(`[WhatsApp] Internal HTTP server listening on port ${BOT_HTTP_PORT}`);
+});
 
+// Only initialize the client and register shutdown hooks when running directly
+if (require.main === module) {
     client.initialize().catch(err => {
         console.error('[WhatsApp] Failed to initialize client:', err);
     });
