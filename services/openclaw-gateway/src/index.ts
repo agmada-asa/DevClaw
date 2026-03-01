@@ -9,6 +9,9 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 3001;
 
+// Trust proxies (like Cloudflare Tunnel) to correctly identify the original protocol (HTTPS)
+app.set('trust proxy', 1);
+
 app.use(cors());
 app.use(express.json());
 
