@@ -2,6 +2,7 @@ import { Client, LocalAuth } from 'whatsapp-web.js';
 import qrcode from 'qrcode-terminal';
 import axios from 'axios';
 import dotenv from 'dotenv';
+import express from 'express';
 
 dotenv.config();
 
@@ -64,7 +65,7 @@ export const handleMessage = async (message: any) => {
             // Fallback
         }
 
-        const loginUrl = `${baseUrl}/api/auth/github?userId=${userId}&provider=whatsapp`;
+        const loginUrl = `${baseUrl}/api/auth/github?userId=${userId}&provider=whatsapp&chatId=${userId}`;
         return message.reply(`Please click this link to link your GitHub account: ${loginUrl}\n\nOnce complete, you can use /status to check your connection or /repo <owner>/<repo> to link a project.\n\nNote: If you are running locally, make sure the gateway is accessible or update GATEWAY_URL to a public tunnel.`);
     }
 
@@ -133,8 +134,34 @@ export const handleMessage = async (message: any) => {
 
 client.on('message', handleMessage);
 
+// Internal HTTP server for receiving proactive messages from Gateway
+const httpApp = express();
+httpApp.use(express.json());
+
+httpApp.post('/api/send', async (req: express.Request, res: express.Response) => {
+    const { chatId, message } = req.body;
+    if (!chatId || !message) {
+        res.status(400).json({ error: 'Missing chatId or message' });
+        return;
+    }
+    try {
+        // WhatsApp chatId format: '<number>@c.us' for individuals
+        const formattedId = chatId.includes('@') ? chatId : `${chatId}@c.us`;
+        await client.sendMessage(formattedId, message);
+        res.status(200).json({ success: true });
+    } catch (error: any) {
+        console.error('[WhatsApp] Failed to send proactive message:', error.message);
+        res.status(500).json({ error: 'Failed to send message' });
+    }
+});
+
 // For testing purposes, export the client
 if (require.main === module) {
+    const BOT_HTTP_PORT = process.env.BOT_HTTP_PORT || 3003;
+    httpApp.listen(BOT_HTTP_PORT, () => {
+        console.log(`[WhatsApp] Internal HTTP server listening on port ${BOT_HTTP_PORT}`);
+    });
+
     client.initialize().catch(err => {
         console.error('[WhatsApp] Failed to initialize client:', err);
     });
@@ -147,4 +174,4 @@ if (require.main === module) {
     });
 }
 
-export { client };
+export { client, httpApp };

@@ -1,11 +1,11 @@
 import { Telegraf, Context } from 'telegraf';
 import axios from 'axios';
 import dotenv from 'dotenv';
+import express from 'express';
 
 dotenv.config();
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3001/api/ingress/message';
 
 if (!BOT_TOKEN) {
     console.error('[Telegram] Error: TELEGRAM_BOT_TOKEN is not set in environment.');
@@ -26,14 +26,18 @@ Other useful commands:
 /repos - List the GitHub repositories you have access to.
 /help - Show this message again.`;
 
-bot.start((ctx) => {
-    ctx.reply(WELCOME_MESSAGE);
-});
+// ─── Main message handler ────────────────────────────────────────────────────
+// Defined before command registrations so bot.command() can reference it.
 
 export const handleTextMessage = async (ctx: Context<any>) => {
     if (!ctx.message || !('text' in ctx.message)) return;
 
     const text = ctx.message.text.trim();
+
+    // Handle help locally
+    if (text.toLowerCase() === '/help') {
+        return ctx.reply(WELCOME_MESSAGE);
+    }
 
     // Handle login command locally
     if (text.toLowerCase() === '/login' || text.toLowerCase() === '/github_login') {
@@ -52,12 +56,9 @@ export const handleTextMessage = async (ctx: Context<any>) => {
             // Fallback
         }
 
-        const loginUrl = `${baseUrl}/api/auth/github?userId=${userId}&provider=telegram`;
+        const chatId = ctx.chat?.id;
+        const loginUrl = `${baseUrl}/api/auth/github?userId=${userId}&provider=telegram&chatId=${chatId}`;
         return ctx.reply(`Please click this link to link your GitHub account: ${loginUrl}\n\nOnce complete, you can use /status to check your connection or /repo <owner>/<repo> to link a project.\n\nNote: If you are running locally, make sure the gateway is accessible or update GATEWAY_URL to a public tunnel.`);
-    }
-
-    if (text.toLowerCase() === '/help') {
-        return ctx.reply(WELCOME_MESSAGE);
     }
 
     const isTaskRequest = text.toLowerCase().startsWith('/task ') ||
@@ -116,10 +117,53 @@ export const handleTextMessage = async (ctx: Context<any>) => {
     }
 };
 
+// ─── Command & event registrations ───────────────────────────────────────────
+
+bot.start((ctx) => {
+    ctx.reply(WELCOME_MESSAGE);
+});
+
+// Register all commands explicitly so Telegraf routes them correctly.
+// bot.on('text') alone may not fire for slash commands in some modes.
+bot.command('help', (ctx) => ctx.reply(WELCOME_MESSAGE));
+bot.command('status', (ctx) => handleTextMessage(ctx));
+bot.command('repos', (ctx) => handleTextMessage(ctx));
+bot.command('login', (ctx) => handleTextMessage(ctx));
+bot.command('github_login', (ctx) => handleTextMessage(ctx));
+bot.command('repo', (ctx) => handleTextMessage(ctx));
+bot.command('task', (ctx) => handleTextMessage(ctx));
+bot.command('request', (ctx) => handleTextMessage(ctx));
+
+// Also keep the generic text handler as a catch-all for any messages
 bot.on('text', handleTextMessage);
+
+// ─── Internal HTTP server for proactive Gateway messages ─────────────────────
+
+const httpApp = express();
+httpApp.use(express.json());
+
+httpApp.post('/api/send', async (req: express.Request, res: express.Response) => {
+    const { chatId, message } = req.body;
+    if (!chatId || !message) {
+        res.status(400).json({ error: 'Missing chatId or message' });
+        return;
+    }
+    try {
+        await bot.telegram.sendMessage(chatId, message);
+        res.status(200).json({ success: true });
+    } catch (error: any) {
+        console.error('[Telegram] Failed to send proactive message:', error.message);
+        res.status(500).json({ error: 'Failed to send message' });
+    }
+});
 
 // For testing purposes, we export the bot but only launch if running directly
 if (require.main === module) {
+    const BOT_HTTP_PORT = process.env.BOT_HTTP_PORT || 3002;
+    httpApp.listen(BOT_HTTP_PORT, () => {
+        console.log(`[Telegram] Internal HTTP server listening on port ${BOT_HTTP_PORT}`);
+    });
+
     bot.launch().then(() => {
         console.log('[Telegram] Bot started.');
     }).catch((err) => {
@@ -131,4 +175,4 @@ if (require.main === module) {
     process.once('SIGTERM', () => bot.stop('SIGTERM'));
 }
 
-export { bot };
+export { bot, httpApp };
