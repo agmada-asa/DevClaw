@@ -43,5 +43,69 @@ describe('OpenClaw Gateway API', () => {
             expect(res.status).toBe(200);
             expect(res.body).toEqual({ success: true, message: 'Message ingested' });
         });
+
+        it('should handle repos payload when user is not logged in', async () => {
+            const payload = {
+                provider: 'telegram',
+                payload: {
+                    chatId: 123,
+                    text: '/repos',
+                    type: 'repos'
+                }
+            };
+
+            const res = await request(app)
+                .post('/api/ingress/message')
+                .send(payload);
+
+            expect(res.status).toBe(200);
+            expect(res.body).toHaveProperty('success', false);
+            expect(res.body.message).toContain('You need to log in to GitHub first. Use /login to authenticate.');
+        });
+
+        it('should handle repo_link payload when user is not logged in', async () => {
+            const payload = {
+                provider: 'telegram',
+                payload: {
+                    chatId: 123,
+                    text: '/repo owner/repo',
+                    type: 'repo_link'
+                }
+            };
+
+            const res = await request(app)
+                .post('/api/ingress/message')
+                .send(payload);
+
+            expect(res.status).toBe(200);
+            expect(res.body).toHaveProperty('success', false);
+            expect(res.body.message).toContain('You need to log in to GitHub first before linking a repository');
+        });
+
+        it('should handle status payload', async () => {
+            const payload = {
+                provider: 'telegram',
+                payload: {
+                    chatId: 123,
+                    text: '/status',
+                    type: 'status'
+                }
+            };
+
+            const res = await request(app)
+                .post('/api/ingress/message')
+                .send(payload);
+
+            expect(res.status).toBe(200);
+            expect(res.body).toHaveProperty('success', true);
+
+            // Allow both true and false depending on whether Supabase is configured and local test account exists.
+            if (res.body.message.includes('Logged into GitHub')) {
+                expect(res.body.message).toContain('Linked Repository');
+            } else {
+                // If not logged in, or if Supabase isn't configured
+                expect(res.body.message).toMatch(/(Not logged into GitHub|Database not configured)/);
+            }
+        });
     });
 });
