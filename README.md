@@ -69,3 +69,4 @@ Hackathon monorepo for DevClaw (product layer) + CEOClaw (founder layer).
 - `docs/architecture/hackathon-scope.md`
 - `docs/architecture/contracts.md`
 - `docs/decisions/0001-monorepo-boundaries.md`
+- `docs/testing-bots.md` (Ingress Interface Testing Guide)
