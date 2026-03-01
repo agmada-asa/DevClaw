@@ -33,6 +33,29 @@ export const handleMessage = async (message: any) => {
     if (message.type !== 'chat') return;
 
     const text = message.body.trim();
+
+    // Handle login command locally
+    if (text.toLowerCase() === '/login' || text.toLowerCase() === '/github_login') {
+        const contact = await message.getContact();
+        const userId = contact.number;
+        if (!userId) {
+            return message.reply('Could not identify your user ID for login.');
+        }
+
+        // Ensure GATEWAY_URL is parsed correctly for the base URL
+        const gatewayUrlStr = process.env.GATEWAY_URL || 'http://localhost:3001/api/ingress/message';
+        let baseUrl = 'http://localhost:3001';
+        try {
+            const parsedUrl = new URL(gatewayUrlStr);
+            baseUrl = `${parsedUrl.protocol}//${parsedUrl.host}`;
+        } catch (e) {
+            // Fallback
+        }
+
+        const loginUrl = `${baseUrl}/api/auth/github?userId=${userId}&provider=whatsapp`;
+        return message.reply(`Please click this link to link your GitHub account: ${loginUrl}\n\nNote: If you are running locally, make sure the gateway is accessible or update GATEWAY_URL to a public tunnel (e.g. ngrok).`);
+    }
+
     const isTaskRequest = text.toLowerCase().startsWith('/task ') ||
         text.toLowerCase() === '/task' ||
         text.toLowerCase().startsWith('/request ') ||
@@ -41,8 +64,10 @@ export const handleMessage = async (message: any) => {
     const isRepoLinkRequest = text.toLowerCase().startsWith('/repo ') ||
         text.toLowerCase() === '/repo';
 
-    if (!isTaskRequest && !isRepoLinkRequest) {
-        return message.reply('To submit a new request, please start your message with /request or /task followed by your task description. Use /repo <owner>/<repo> to link a GitHub repository.');
+    const isReposListRequest = text.toLowerCase() === '/repos';
+
+    if (!isTaskRequest && !isRepoLinkRequest && !isReposListRequest) {
+        return message.reply('To submit a new request, please start your message with /request or /task followed by your task description. Use /repo <owner>/<repo> to link a GitHub repository, or /repos to list your repositories. Use /login to authenticate with GitHub.');
     }
 
     try {
@@ -55,7 +80,7 @@ export const handleMessage = async (message: any) => {
             text: text,
             messageId: message.id._serialized,
             timestamp: new Date().toISOString(),
-            type: isRepoLinkRequest ? 'repo_link' : 'task'
+            type: isReposListRequest ? 'repos' : (isRepoLinkRequest ? 'repo_link' : 'task')
         };
 
         const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3001/api/ingress/message';
@@ -65,7 +90,16 @@ export const handleMessage = async (message: any) => {
         });
 
         if (response.status === 200) {
-            const replyMessage = response.data?.message || (isRepoLinkRequest ? 'Repository link request sent to gateway.' : 'Task received and sent to gateway. Evaluating...');
+            let replyMessage = response.data?.message;
+            if (!replyMessage) {
+                if (isReposListRequest) {
+                    replyMessage = 'Repository list request sent to gateway.';
+                } else if (isRepoLinkRequest) {
+                    replyMessage = 'Repository link request sent to gateway.';
+                } else {
+                    replyMessage = 'Task received and sent to gateway. Evaluating...';
+                }
+            }
             await message.reply(replyMessage);
         } else {
             const errorMessage = response.data?.error || 'Gateway accepted the message, but returned an unexpected status.';
