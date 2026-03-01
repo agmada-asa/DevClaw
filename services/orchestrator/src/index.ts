@@ -6,6 +6,7 @@ import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { IntakeRequest } from '@devclaw/contracts';
 import { createOrDedupeIssue } from './githubClient';
+import { getOrchestrationEngine } from './orchestrationEngine';
 
 dotenv.config();
 
@@ -18,6 +19,7 @@ app.use(express.json());
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
+const orchestrationEngine = getOrchestrationEngine();
 
 // ─── Health Check ────────────────────────────────────────────────────────────
 
@@ -110,19 +112,14 @@ app.post('/api/task', async (req: Request, res: Response): Promise<any> => {
         });
     }
 
-    // ── Step 2: Fetch Architecture Plan ──────────────────────────────────────
+    // ── Step 2: Build Architecture Plan via selected orchestration engine ───
     let plan: import('@devclaw/contracts').ArchitecturePlan | undefined;
     try {
-        const plannerUrl = process.env.ARCHITECTURE_PLANNER_URL || 'http://localhost:3020';
-        // Use IntakeRequest + issueNumber? Or just forward intake payload. We'll send what's needed.
-        const plannerRes = await axios.post(`${plannerUrl}/api/plan`, {
-            requestId: intake.requestId,
-            userId,
-            repo: repoFullName,
-            description,
-            issueNumber
+        plan = await orchestrationEngine.plan({
+            intake,
+            repoFullName,
+            issueNumber,
         });
-        plan = plannerRes.data;
         console.log(`[Orchestrator] Fetched Architecture Plan ${plan?.planId}`);
     } catch (err: any) {
         console.error('[Orchestrator] Failed to fetch architecture plan:', err.response?.data || err.message);
@@ -246,8 +243,34 @@ app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
         return res.status(404).json({ error: 'Task run not found' });
     }
 
+    let execution: import('./orchestrationEngine').ExecuteResult | undefined;
+    try {
+        execution = await orchestrationEngine.execute({
+            runId: updated.id,
+            planId: updated.plan_id,
+            requestId: updated.plan_details?.requestId,
+            userId: updated.user_id,
+            repo: updated.repo,
+            issueNumber: updated.issue_number,
+            issueUrl: updated.issue_url,
+            description: updated.description,
+            planDetails: updated.plan_details,
+        });
+    } catch (err: any) {
+        console.error('[Orchestrator] Failed to dispatch approved task for execution:', err.response?.data || err.message);
+        return res.status(502).json({
+            error: 'Task was approved but execution dispatch failed.',
+            task: updated,
+        });
+    }
+
     console.log(`[Orchestrator] Task ${updated.id} (plan ${updated.plan_id}) was APPROVED`);
-    return res.status(200).json({ success: true, message: 'Task approved', task: updated });
+    return res.status(200).json({
+        success: true,
+        message: 'Task approved and dispatched for execution',
+        task: updated,
+        execution,
+    });
 });
 
 // ─── POST /api/reject ────────────────────────────────────────────────────────

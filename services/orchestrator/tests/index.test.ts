@@ -166,7 +166,8 @@ describe('Orchestrator API', () => {
         const res = await request(app).post('/api/approve').send({ planId: 'plan-123' });
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
-        expect(res.body.message).toBe('Task approved');
+        expect(res.body.message).toBe('Task approved and dispatched for execution');
+        expect(res.body.execution).toBeDefined();
     });
 
     // ── POST /api/reject ────────────────────────────────────────────────────
@@ -183,4 +184,3 @@ describe('Orchestrator API', () => {
         expect(res.body.message).toBe('Task rejected');
     });
 });
-
