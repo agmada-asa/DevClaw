@@ -1,4 +1,5 @@
 import express, { Request, Response } from 'express';
+import crypto from 'crypto';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
@@ -288,13 +289,18 @@ app.post('/api/ingress/message', async (req: Request, res: Response): Promise<an
 
         // ── Dispatch to orchestrator ──────────────────────────────────────────
         const orchestratorUrl = process.env.ORCHESTRATOR_URL || 'http://localhost:3010';
-        const intakePayload = {
+        const repoParts = userPrefs.github_repo.split('/');
+        const intakePayload: import('@devclaw/contracts').IntakeRequest = {
+            requestId: crypto.randomUUID(),
             userId,
-            channel: provider,
+            channel: provider as "telegram" | "whatsapp",
             chatId: payload.chatId ? payload.chatId.toString() : '',
-            repo: userPrefs.github_repo,
-            githubToken: userPrefs.github_token,
-            description,
+            repo: {
+                owner: repoParts[0],
+                name: repoParts[1],
+            },
+            message: description,
+            timestampIso: new Date().toISOString()
         };
 
         try {

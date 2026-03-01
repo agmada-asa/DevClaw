@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
+import { IntakeRequest } from '@devclaw/contracts';
 import { createOrDedupeIssue } from './githubClient';
 
 dotenv.config();
@@ -29,35 +30,52 @@ app.get('/health', (_req: Request, res: Response) => {
 // Accepts a normalized task dispatch from the openclaw-gateway.
 // Payload shape (matches IntakeRequest from docs/architecture/contracts.md):
 //   {
-//     userId: string,
+//     requestId: string,
 //     channel: "telegram" | "whatsapp",
-//     chatId: string,
-//     repo: string,          // "owner/repo"
-//     githubToken: string,
-//     description: string,
+//     userId: string,
+//     repo: { owner: string, name: string },
+//     message: string,
+//     timestampIso: string,
+//     chatId?: string
 //   }
 //
 // Responsibilities:
 //   1. Validate input.
-//   2. Create or deduplicate a GitHub issue.
-//   3. Persist a task_run record to Supabase.
-//   4. Send an approval card to the user's chat bot.
-//   5. Return an ACK to the gateway.
+//   2. Fetch github token from database.
+//   3. Create or deduplicate a GitHub issue.
+//   4. Persist a task_run record to Supabase.
+//   5. Send an approval card to the user's chat bot.
+//   6. Return an ACK to the gateway.
 
 app.post('/api/task', async (req: Request, res: Response): Promise<any> => {
-    const { userId, channel, chatId, repo, githubToken, description } = req.body;
+    const intake: IntakeRequest = req.body;
+    const { userId, channel, chatId, repo, message: description } = intake;
 
-    if (!userId || !channel || !repo || !githubToken || !description) {
+    if (!userId || !channel || !repo || !repo.owner || !repo.name || !description) {
         return res.status(400).json({
-            error: 'Missing required fields: userId, channel, repo, githubToken, description',
+            error: 'Missing required fields: userId, channel, repo, message',
         });
     }
 
-    const repoParts = repo.split('/');
-    if (repoParts.length !== 2) {
-        return res.status(400).json({ error: 'Invalid repo format. Expected "owner/repo".' });
+    const owner = repo.owner;
+    const repoName = repo.name;
+    const repoFullName = `${owner}/${repoName}`;
+
+    if (!supabase) {
+        return res.status(500).json({ error: 'Supabase is not configured' });
     }
-    const [owner, repoName] = repoParts;
+
+    // ── Fetch GitHub Token ───────────────────────────────────────────────────
+    const { data: userPrefs, error: prefsError } = await supabase
+        .from('user_preferences')
+        .select('github_token')
+        .eq('user_id', userId)
+        .single();
+
+    if (prefsError || !userPrefs || !userPrefs.github_token) {
+        return res.status(401).json({ error: 'No GitHub token found. Please /login first.' });
+    }
+    const githubToken = userPrefs.github_token;
 
     const runId = uuidv4();
     const issueTitle = `Task: ${description.slice(0, 80)}`;
@@ -92,13 +110,36 @@ app.post('/api/task', async (req: Request, res: Response): Promise<any> => {
         });
     }
 
-    // ── Step 2: Persist task_run to Supabase ─────────────────────────────────
+    // ── Step 2: Fetch Architecture Plan ──────────────────────────────────────
+    let plan: import('@devclaw/contracts').ArchitecturePlan | undefined;
+    try {
+        const plannerUrl = process.env.ARCHITECTURE_PLANNER_URL || 'http://localhost:3020';
+        // Use IntakeRequest + issueNumber? Or just forward intake payload. We'll send what's needed.
+        const plannerRes = await axios.post(`${plannerUrl}/api/plan`, {
+            requestId: intake.requestId,
+            userId,
+            repo: repoFullName,
+            description,
+            issueNumber
+        });
+        plan = plannerRes.data;
+        console.log(`[Orchestrator] Fetched Architecture Plan ${plan?.planId}`);
+    } catch (err: any) {
+        console.error('[Orchestrator] Failed to fetch architecture plan:', err.response?.data || err.message);
+        return res.status(502).json({
+            error: 'Failed to generate architecture plan from planner service.',
+        });
+    }
+
+    // ── Step 3: Persist task_run to Supabase ─────────────────────────────────
     if (supabase) {
         const { error: dbError } = await supabase.from('task_runs').upsert(
             {
                 id: runId,
+                plan_id: plan?.planId,
+                plan_details: plan,
                 user_id: userId,
-                repo,
+                repo: repoFullName,
                 issue_url: issueUrl,
                 issue_number: issueNumber,
                 description,
@@ -118,20 +159,32 @@ app.post('/api/task', async (req: Request, res: Response): Promise<any> => {
         console.warn('[Orchestrator] Supabase not configured — task_run will not be persisted.');
     }
 
-    // ── Step 3: Build approval card message ──────────────────────────────────
+    // ── Step 4: Build approval card message ──────────────────────────────────
     const issueLabel = isDuplicate ? `🔗 Linked to existing issue #${issueNumber}` : `✅ Created issue #${issueNumber}`;
+    const formattedFiles = plan?.affectedFiles?.length ? plan.affectedFiles.map(f => `- \`${f}\``).join('\n') : '_None_';
+    const formattedRisks = plan?.riskFlags?.length ? plan.riskFlags.map(r => `⚠️ ${r}`).join('\n') : '_None_';
+
     const approvalMessage = [
-        `${issueLabel} in \`${repo}\`:`,
+        `${issueLabel} in \`${repoFullName}\`:`,
         `${issueUrl}`,
         '',
-        `📋 *${description}*`,
+        `📋 *Task:* ${description}`,
+        '',
+        `🏗️ *Architecture Plan (${plan?.planId || 'unknown'})*`,
+        `${plan?.summary || 'No summary available.'}`,
+        '',
+        `*Affected Files:*`,
+        `${formattedFiles}`,
+        '',
+        `*Risk Flags:*`,
+        `${formattedRisks}`,
         '',
         `When you're ready, reply:`,
-        `  /approve — to start implementation`,
-        `  /reject — to cancel`,
+        `  /approve ${plan?.planId} — to start implementation`,
+        `  /reject ${plan?.planId} — to cancel`,
     ].join('\n');
 
-    // ── Step 4: Fire approval card to the user's chat (fire-and-forget) ──────
+    // ── Step 5: Fire approval card to the user's chat (fire-and-forget) ──────
     if (chatId) {
         let botUrl: string | undefined;
         if (channel === 'telegram') {
@@ -160,12 +213,70 @@ app.post('/api/task', async (req: Request, res: Response): Promise<any> => {
         }
     }
 
-    // ── Step 5: Return ACK to gateway ────────────────────────────────────────
+    // ── Step 6: Return ACK to gateway ────────────────────────────────────────
     const ackMessage = isDuplicate
-        ? `🔗 I found an existing issue for this task: ${issueUrl}\n\nReply /approve to start implementation or /reject to cancel.`
-        : `✅ I've opened a GitHub issue for your task: ${issueUrl}\n\nReply /approve to start implementation or /reject to cancel.`;
+        ? `🔗 I found an existing issue for this task: ${issueUrl}\n\nReply /approve ${plan?.planId} to start implementation or /reject ${plan?.planId} to cancel.`
+        : `✅ I've opened a GitHub issue for your task: ${issueUrl}\n\nReply /approve ${plan?.planId} to start implementation or /reject ${plan?.planId} to cancel.`;
 
     return res.status(200).json({ success: true, message: ackMessage, issueNumber, issueUrl, runId });
+});
+
+// ─── POST /api/approve ───────────────────────────────────────────────────────
+app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
+    const { runId, planId } = req.body;
+
+    if (!runId && !planId) {
+        return res.status(400).json({ error: 'Must provide runId or planId' });
+    }
+
+    if (!supabase) {
+        return res.status(500).json({ error: 'Supabase is not configured' });
+    }
+
+    const matchQuery = runId ? { id: runId } : { plan_id: planId };
+
+    const { data: updated, error } = await supabase
+        .from('task_runs')
+        .update({ status: 'approved' })
+        .match(matchQuery)
+        .select()
+        .single();
+
+    if (error || !updated) {
+        return res.status(404).json({ error: 'Task run not found' });
+    }
+
+    console.log(`[Orchestrator] Task ${updated.id} (plan ${updated.plan_id}) was APPROVED`);
+    return res.status(200).json({ success: true, message: 'Task approved', task: updated });
+});
+
+// ─── POST /api/reject ────────────────────────────────────────────────────────
+app.post('/api/reject', async (req: Request, res: Response): Promise<any> => {
+    const { runId, planId } = req.body;
+
+    if (!runId && !planId) {
+        return res.status(400).json({ error: 'Must provide runId or planId' });
+    }
+
+    if (!supabase) {
+        return res.status(500).json({ error: 'Supabase is not configured' });
+    }
+
+    const matchQuery = runId ? { id: runId } : { plan_id: planId };
+
+    const { data: updated, error } = await supabase
+        .from('task_runs')
+        .update({ status: 'rejected' })
+        .match(matchQuery)
+        .select()
+        .single();
+
+    if (error || !updated) {
+        return res.status(404).json({ error: 'Task run not found' });
+    }
+
+    console.log(`[Orchestrator] Task ${updated.id} (plan ${updated.plan_id}) was REJECTED`);
+    return res.status(200).json({ success: true, message: 'Task rejected', task: updated });
 });
 
 // ─── Server Boot ─────────────────────────────────────────────────────────────
