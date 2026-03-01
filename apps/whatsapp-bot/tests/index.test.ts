@@ -60,7 +60,7 @@ describe('WhatsApp Client message formatting', () => {
         await handleMessage(mockMsg);
 
         expect(mockReply).toHaveBeenCalledWith(
-            'To submit a new request, please start your message with /request or /task followed by your task description.'
+            'To submit a new request, please start your message with /request or /task followed by your task description. Use /repo <owner>/<repo> to link a GitHub repository.'
         );
         expect(axios.post).not.toHaveBeenCalled();
     });
@@ -87,6 +87,7 @@ describe('WhatsApp Client message formatting', () => {
                 text: '/task Please fix the bug',
                 messageId: 'msg123',
                 timestamp: expect.any(String),
+                type: 'task'
             }
         });
         expect(mockReply).toHaveBeenCalledWith('Task received and sent to gateway. Evaluating...');
