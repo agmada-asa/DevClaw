@@ -241,51 +241,86 @@ app.post('/api/ingress/message', async (req: Request, res: Response): Promise<an
     }
 
     if (payload.type === 'task') {
-        let repo = '';
-        let githubToken = process.env.GITHUB_TOKEN || ''; // Fallback to server token if set
-
-        if (supabase) {
-            const { data, error } = await supabase
-                .from('user_preferences')
-                .select('github_repo, github_token')
-                .eq('user_id', userId)
-                .single();
-
-            if (error || !data) {
-                return res.status(200).json({ success: false, message: 'No GitHub repository linked. Please use /repo <owner>/<repo> first. Note: You may need to /login first.' });
-            }
-            repo = data.github_repo;
-            if (data.github_token) {
-                githubToken = data.github_token; // Use their personal token if available
-            }
+        // ── Validate user has a linked repo and GitHub token ──────────────────
+        if (!supabase) {
+            return res.status(200).json({ success: false, message: 'Database not configured on server.' });
         }
 
-        if (repo) {
-            if (githubToken) {
-                try {
-                    const issueDescription = text.replace(/^\/task /i, '').replace(/^\/request /i, '').trim();
-                    const response = await axios.post(`https://api.github.com/repos/${repo}/issues`, {
-                        title: `Task from ${provider}`,
-                        body: `This issue was created from ${provider} by user ${payload.username || payload.userId}.\n\n**Task:**\n${issueDescription}`
-                    }, {
-                        headers: {
-                            'Authorization': `Bearer ${githubToken}`,
-                            'Accept': 'application/vnd.github.v3+json'
-                        }
-                    });
+        const { data: userPrefs, error: prefsError } = await supabase
+            .from('user_preferences')
+            .select('github_repo, github_token')
+            .eq('user_id', userId)
+            .single();
 
-                    console.log(`[Gateway] Created GitHub issue: ${response.data.html_url}`);
-                    return res.status(200).json({ success: true, message: `Successfully created task in ${repo}:\n${response.data.html_url}` });
-                } catch (error: any) {
-                    console.error('[Gateway] Error creating GitHub issue:', error.response?.data || error.message);
-                    return res.status(500).json({ error: 'Failed to create GitHub issue. Ensure the repository exists and your token has correct permissions.' });
-                }
-            } else {
-                console.warn('[Gateway] No GitHub token available to create issue.');
-                return res.status(200).json({ success: false, message: 'No GitHub token available. Please /login first.' });
+        if (prefsError || !userPrefs) {
+            return res.status(200).json({
+                success: false,
+                message: 'No account found. Please /login to GitHub and link a repo with /repo <owner>/<repo>.',
+            });
+        }
+
+        if (!userPrefs.github_token) {
+            return res.status(200).json({
+                success: false,
+                message: 'You need to /login to GitHub before submitting tasks.',
+            });
+        }
+
+        if (!userPrefs.github_repo) {
+            return res.status(200).json({
+                success: false,
+                message: 'No repository linked. Use /repo <owner>/<repo> to link one first.',
+            });
+        }
+
+        // ── Build the task description ────────────────────────────────────────
+        const description = text
+            .replace(/^\/task\s+/i, '')
+            .replace(/^\/request\s+/i, '')
+            .trim();
+
+        if (!description) {
+            return res.status(200).json({
+                success: false,
+                message: 'Please provide a task description. Example: /task Fix the login button on mobile.',
+            });
+        }
+
+        // ── Dispatch to orchestrator ──────────────────────────────────────────
+        const orchestratorUrl = process.env.ORCHESTRATOR_URL || 'http://localhost:3010';
+        const intakePayload = {
+            userId,
+            channel: provider,
+            chatId: payload.chatId ? payload.chatId.toString() : '',
+            repo: userPrefs.github_repo,
+            githubToken: userPrefs.github_token,
+            description,
+        };
+
+        try {
+            console.log(`[Gateway] Dispatching task to orchestrator for repo ${userPrefs.github_repo}`);
+            const orchResponse = await axios.post(`${orchestratorUrl}/api/task`, intakePayload, {
+                timeout: 15000, // 15s — orchestrator may do a GitHub API round-trip
+            });
+            return res.status(200).json(orchResponse.data);
+        } catch (err: any) {
+            const status = err.response?.status;
+            const detail = err.response?.data?.error || err.message;
+            console.error('[Gateway] Orchestrator dispatch failed:', detail);
+
+            if (status === 400) {
+                return res.status(200).json({ success: false, message: `Bad task request: ${detail}` });
             }
-        } else {
-            return res.status(200).json({ success: false, message: 'Supabase is not configured to check for repo' });
+            if (status === 502) {
+                return res.status(200).json({
+                    success: false,
+                    message: `GitHub issue creation failed: ${detail}`,
+                });
+            }
+            return res.status(200).json({
+                success: false,
+                message: 'Task submission failed — the orchestrator is unavailable. Please try again shortly.',
+            });
         }
     }
 
