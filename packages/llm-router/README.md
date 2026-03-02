@@ -1,9 +1,10 @@
 # llm-router
 
 ## Purpose
-TBD implementation for the authoritative boundary defined in DevClaw/docs/architecture/system-architecture.md.
+Routes planner model calls across providers and normalizes output into `ArchitecturePlan`-compatible fields.
 
-## Initial Tasks
-1. Define public interface and contracts.
-2. Add minimal health check and logging.
-3. Add unit tests for core behavior.
+## Current Provider
+- `zai_glm` via OpenAI-style chat completions API.
+
+## Export
+- `generateArchitecturePlan(input)` from `src/index.ts`
