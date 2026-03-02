@@ -27,6 +27,8 @@ async function callProvider(
   req: ChatRequest,
   timeoutMs?: number,
 ): Promise<ChatResponse> {
+  // ctx is passed into every error we throw so callers can log which role,
+  // provider, and request was in flight when the failure happened.
   const ctx = { role: req.role, provider, model: modelId, requestId: req.requestId };
 
   try {
@@ -36,12 +38,17 @@ async function callProvider(
       case 'venice': return await callVenice(modelId, messages, temperature, maxTokens, timeoutMs);
       case 'zai':    return await callZai(modelId, messages, temperature, maxTokens, timeoutMs);
       default: {
+        // TypeScript exhaustiveness check: if a new Provider value is added to
+        // the union in types.ts but not handled here, the compiler will error
+        // because `provider` can no longer be assigned to `never`.
         const _exhaustive: never = provider;
         throw new Error(`[llm-router] Unknown provider: ${_exhaustive}`);
       }
     }
   } catch (err) {
-    // Don't re-wrap errors that are already typed.
+    // If the provider function already threw a typed RouterError (e.g. because
+    // it validated the API key before calling axios), re-throw it unchanged so
+    // we don't lose the original type and context by wrapping it a second time.
     if (err instanceof RouterError) throw err;
 
     if (axios.isAxiosError(err)) {
