@@ -18,6 +18,7 @@ export interface ChatRequest {
   messages: ChatMessage[];
   temperature?: number;  // 0.0–1.0, lower = more deterministic
   maxTokens?: number;
+  requestId?: string;    // propagated into any error thrown, for tracing
 }
 
 // What llm-router returns after a successful call.
