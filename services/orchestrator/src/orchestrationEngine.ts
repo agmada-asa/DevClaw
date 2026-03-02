@@ -7,6 +7,13 @@ export interface PlanInput {
     issueNumber: number;
 }
 
+export interface RefineInput {
+    planId: string;
+    repoFullName: string;
+    changeRequest: string;
+    issueNumber?: number;
+}
+
 export interface ExecuteInput {
     runId: string;
     planId?: string;
@@ -35,6 +42,9 @@ export interface ExecuteResult {
 export interface OrchestrationEngine {
     /** Generates an architecture plan based on an intake request via the OpenClaw Engine */
     plan(input: PlanInput): Promise<ArchitecturePlan>;
+
+    /** Updates an existing architecture plan with refining instructions array via the OpenClaw Engine */
+    refine(input: RefineInput): Promise<ArchitecturePlan>;
 
     /** Dispatches an approved plan to an execution engine for code generation */
     execute(input: ExecuteInput): Promise<ExecuteResult>;
@@ -93,6 +103,18 @@ class OpenClawPlanningEngine {
         });
         return planRes.data;
     }
+
+    async refine(input: RefineInput): Promise<ArchitecturePlan> {
+        console.log('================================================================================');
+        console.log(`🚀 Orchestrator is using OPENCLAW engine to refine plan ${input.planId}`);
+        console.log('================================================================================');
+        const refineRes = await axios.post(`${this.baseUrl}${this.planPath}/${input.planId}/update`, {
+            changeRequest: input.changeRequest,
+            repo: input.repoFullName,
+            source: 'orchestrator',
+        });
+        return refineRes.data;
+    }
 }
 
 /**
@@ -136,6 +158,10 @@ class CombinedOrchestrationEngine implements OrchestrationEngine {
 
     plan(input: PlanInput): Promise<ArchitecturePlan> {
         return this.planning.plan(input);
+    }
+
+    refine(input: RefineInput): Promise<ArchitecturePlan> {
+        return this.planning.refine(input);
     }
 
     execute(input: ExecuteInput): Promise<ExecuteResult> {

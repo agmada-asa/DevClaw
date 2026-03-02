@@ -216,6 +216,7 @@ app.post('/api/task', async (req: Request, res: Response): Promise<any> => {
             '',
             `When you're ready, reply:`,
             `  /approve ${plan?.planId} — to start implementation`,
+            `  /refine ${plan?.planId} [instructions] — to adjust the plan`,
             `  /reject ${plan?.planId} — to cancel`,
         ].join('\n');
 
@@ -332,6 +333,113 @@ app.post('/api/reject', async (req: Request, res: Response): Promise<any> => {
 
     console.log(`[Orchestrator] Task ${updated.id} (plan ${updated.plan_id}) was REJECTED`);
     return res.status(200).json({ success: true, message: 'Task rejected', task: updated });
+});
+
+// ─── POST /api/refine ────────────────────────────────────────────────────────
+app.post('/api/refine', async (req: Request, res: Response): Promise<any> => {
+    const { planId, refinement, userId, channel, chatId } = req.body;
+
+    if (!planId || !refinement) {
+        return res.status(400).json({ error: 'Must provide planId and refinement' });
+    }
+
+    if (!supabase) {
+        return res.status(500).json({ error: 'Supabase is not configured' });
+    }
+
+    const { data: existingRun, error } = await supabase
+        .from('task_runs')
+        .select('*')
+        .eq('plan_id', planId)
+        .single();
+
+    if (error || !existingRun) {
+        return res.status(404).json({ error: 'Task run not found' });
+    }
+
+    if (existingRun.status !== 'pending_approval') {
+        return res.status(400).json({ error: `Cannot refine task in status ${existingRun.status}` });
+    }
+
+    // Acknowledge receipt to gateway immediately
+    res.status(200).json({ success: true, message: `⚙️ Refining plan ${planId} with your instructions... I'll message you when it's updated.` });
+
+    // Process refinement in the background
+    (async () => {
+        let refinedPlan: import('@devclaw/contracts').ArchitecturePlan | undefined;
+        try {
+            refinedPlan = await orchestrationEngine.refine({
+                planId,
+                repoFullName: existingRun.repo,
+                changeRequest: refinement,
+                issueNumber: existingRun.issue_number
+            });
+            console.log(`[Orchestrator] Fetched Refined Architecture Plan ${refinedPlan?.planId}`);
+        } catch (err: any) {
+            console.error('[Orchestrator] Failed to fetch refined architecture plan:', formatErrorDetails(err));
+            if (chatId || existingRun.chat_id) {
+                const targetChatId = chatId || existingRun.chat_id;
+                const failureMessage = `❌ I failed to refine the architecture plan for issue #${existingRun.issue_number}.\nError: ${err?.message || 'Gateway timeout or planner unavailable.'}`;
+                let botUrl: string | undefined;
+                const targetChannel = channel || existingRun.channel;
+                if (targetChannel === 'telegram') botUrl = process.env.TELEGRAM_BOT_URL;
+                else if (targetChannel === 'whatsapp') botUrl = process.env.WHATSAPP_BOT_URL;
+
+                if (botUrl) {
+                    axios.post(`${botUrl}/api/send`, { chatId: targetChatId, message: failureMessage }).catch(e => console.error(e));
+                }
+            }
+            return;
+        }
+
+        // Persist updated plan to Supabase
+        const { error: dbError } = await supabase.from('task_runs').update({
+            plan_id: refinedPlan.planId,
+            plan_details: refinedPlan,
+        }).eq('id', existingRun.id);
+
+        if (dbError) {
+            console.warn('[Orchestrator] Could not update task_run with refined plan:', dbError.message);
+        }
+
+        // Send updated approval card to user's chat
+        const issueLabel = `🔄 Plan Updated for issue #${existingRun.issue_number}`;
+        const formattedFiles = refinedPlan?.affectedFiles?.length ? refinedPlan.affectedFiles.map(f => `- \`${f}\``).join('\n') : '_None_';
+        const formattedRisks = refinedPlan?.riskFlags?.length ? refinedPlan.riskFlags.map(r => `⚠️ ${r}`).join('\n') : '_None_';
+
+        const approvalMessage = [
+            `${issueLabel} in \`${existingRun.repo}\`:`,
+            `${existingRun.issue_url}`,
+            '',
+            `📋 *Task:* ${existingRun.description}`,
+            '',
+            `🏗️ *New Architecture Plan (${refinedPlan?.planId || 'unknown'})*`,
+            `${refinedPlan?.summary || 'No summary available.'}`,
+            '',
+            `*Affected Files:*`,
+            `${formattedFiles}`,
+            '',
+            `*Risk Flags:*`,
+            `${formattedRisks}`,
+            '',
+            `When you're ready, reply:`,
+            `  /approve ${refinedPlan?.planId} — to start implementation`,
+            `  /refine ${refinedPlan?.planId} [instructions] — to adjust the plan`,
+            `  /reject ${refinedPlan?.planId} — to cancel`,
+        ].join('\n');
+
+        const botChannel = channel || existingRun.channel;
+        const targetChatId = chatId || existingRun.chat_id;
+        if (targetChatId) {
+            let botUrl: string | undefined;
+            if (botChannel === 'telegram') botUrl = process.env.TELEGRAM_BOT_URL;
+            else if (botChannel === 'whatsapp') botUrl = process.env.WHATSAPP_BOT_URL;
+
+            if (botUrl) {
+                axios.post(`${botUrl}/api/send`, { chatId: targetChatId, message: approvalMessage }).catch(e => console.error(e));
+            }
+        }
+    })();
 });
 
 // ─── Server Boot ─────────────────────────────────────────────────────────────
