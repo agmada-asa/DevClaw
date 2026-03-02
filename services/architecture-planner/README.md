@@ -1,9 +1,16 @@
 # architecture-planner
 
 ## Purpose
-TBD implementation for the authoritative boundary defined in /Users/agmad/Documents/DevClaw/docs/architecture/system-architecture.md.
+Generates `ArchitecturePlan` payloads for incoming task requests.
 
-## Initial Tasks
-1. Define public interface and contracts.
-2. Add minimal health check and logging.
-3. Add unit tests for core behavior.
+## Endpoints
+- `GET /health`
+- `POST /api/plan`
+
+## Z.ai GLM Configuration
+- `LLM_PROVIDER=zai_glm` (default)
+- `ZAI_API_KEY=<required for live model calls>`
+- `ZAI_BASE_URL` (default: `https://api.z.ai/api/paas/v4`)
+- `ZAI_GLM_MODEL` (default: `glm-4.7`)
+
+If `ZAI_API_KEY` is missing or a provider call fails, the service returns a deterministic fallback plan.
