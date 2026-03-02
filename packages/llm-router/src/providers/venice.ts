@@ -10,6 +10,7 @@ export async function callVenice(
   messages: ChatMessage[],
   temperature = 0.2,
   maxTokens = 4096,
+  timeoutMs?: number,
 ): Promise<ChatResponse> {
   const apiKey = process.env.VENICE_API_KEY;
   if (!apiKey) throw new Error('[llm-router] VENICE_API_KEY is not set');
@@ -27,6 +28,10 @@ export async function callVenice(
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
+      // Only set axios `timeout` when the caller provides one.
+      // Using `!== undefined` (not a falsy check) so that a timeout of 0 ms
+      // is still applied — 0 is a valid, if aggressive, deadline.
+      ...(timeoutMs !== undefined && { timeout: timeoutMs }),
     },
   );
 
