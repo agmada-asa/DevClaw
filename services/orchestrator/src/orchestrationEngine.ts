@@ -25,11 +25,25 @@ export interface ExecuteResult {
     runRef?: string;
 }
 
+/**
+ * The core orchestration interface that bridges the intake requests with
+ * both architecture planning and code execution stages.
+ * 
+ * Note: Planning is exclusively handled by OpenClawPlanningEngine, whereas 
+ * execution can be deferred to either LegacyExecutionEngine or OpenClawExecutionEngine.
+ */
 export interface OrchestrationEngine {
+    /** Generates an architecture plan based on an intake request via the OpenClaw Engine */
     plan(input: PlanInput): Promise<ArchitecturePlan>;
+
+    /** Dispatches an approved plan to an execution engine for code generation */
     execute(input: ExecuteInput): Promise<ExecuteResult>;
 }
 
+/**
+ * A legacy adapter for dispatching code execution requests to the old `AGENT_RUNNER_URL`
+ * component (historically listening on port 3030).
+ */
 class LegacyExecutionEngine {
     async execute(input: ExecuteInput): Promise<ExecuteResult> {
         console.log('================================================================================');
@@ -56,6 +70,11 @@ class LegacyExecutionEngine {
     }
 }
 
+/**
+ * The dedicated planning engine using the internal `openclaw-engine` service API.
+ * This replaced the legacy `architecture-planner` service. It connects to the 
+ * OpenAPI planner endpoint (`/api/plan`).
+ */
 class OpenClawPlanningEngine {
     private readonly baseUrl = process.env.OPENCLAW_ENGINE_URL || 'http://localhost:3040';
     private readonly planPath = process.env.OPENCLAW_PLAN_PATH || '/api/plan';
@@ -76,6 +95,10 @@ class OpenClawPlanningEngine {
     }
 }
 
+/**
+ * The next-generation execution engine, intended to leverage the OpenClaw 
+ * execution pipeline once implemented, connecting directly to `OPENCLAW_ENGINE_URL`.
+ */
 class OpenClawExecutionEngine {
     private readonly baseUrl = process.env.OPENCLAW_ENGINE_URL || 'http://localhost:3040';
     private readonly executePath = process.env.OPENCLAW_EXECUTE_PATH || '/api/execute';
@@ -120,6 +143,15 @@ class CombinedOrchestrationEngine implements OrchestrationEngine {
     }
 }
 
+/**
+ * Factory and Dependency Injection container for the generic OrchestrationEngine.
+ * Determines runtime engines dynamically based on feature flags (environment variables).
+ * 
+ * Flow:
+ * - Always binds `OpenClawPlanningEngine` for `plan()` calls.
+ * - Examines `EXECUTION_ENGINE` (falls back to `ORCHESTRATION_ENGINE` default) to
+ *   select either legacy agent-runner or modern openclaw execution for `execute()`.
+ */
 export const getOrchestrationEngine = (): OrchestrationEngine => {
     const defaultEngine = (process.env.ORCHESTRATION_ENGINE || 'legacy').toLowerCase();
     const executionEngine = (process.env.EXECUTION_ENGINE || defaultEngine).toLowerCase();

@@ -33,6 +33,10 @@ const toPlanResponse = (record: OpenClawPlanRecord) => ({
     blueprint: record.blueprint,
 });
 
+/**
+ * Health check endpoint.
+ * Returns service capabilities and the underlying runtime (openclaw-cli).
+ */
 app.get('/health', (_req: Request, res: Response) => {
     res.status(200).json({
         status: 'ok',
@@ -42,6 +46,13 @@ app.get('/health', (_req: Request, res: Response) => {
     });
 });
 
+/**
+ * POST /api/plan
+ * 
+ * Creates a new architecture plan.
+ * Used by the orchestrator (via OpenClawPlanningEngine) to generate an 
+ * initial blueprint for a task.
+ */
 app.post('/api/plan', async (req: Request, res: Response): Promise<any> => {
     const { requestId, userId, repo, description, issueNumber, source } = req.body || {};
 
@@ -77,6 +88,11 @@ app.post('/api/plan', async (req: Request, res: Response): Promise<any> => {
     }
 });
 
+/**
+ * GET /api/plan/:planId
+ * 
+ * Retrieves an existing plan from the local plan store.
+ */
 app.get('/api/plan/:planId', (req: Request, res: Response): any => {
     const planId = String(req.params.planId || '').trim();
     if (!planId) {
@@ -91,6 +107,12 @@ app.get('/api/plan/:planId', (req: Request, res: Response): any => {
     return res.status(200).json(toPlanResponse(found));
 });
 
+/**
+ * POST /api/plan/:planId/update
+ * 
+ * Iterates on an existing plan based on a user change request.
+ * Useful for refining the architecture before approval and execution.
+ */
 app.post('/api/plan/:planId/update', async (req: Request, res: Response): Promise<any> => {
     const planId = String(req.params.planId || '').trim();
     const { changeRequest, context, repo, source } = req.body || {};
@@ -140,6 +162,12 @@ app.post('/api/plan/:planId/update', async (req: Request, res: Response): Promis
     }
 });
 
+/**
+ * POST /api/execute
+ * 
+ * Placeholder for the next-generation OpenClaw execution pipeline.
+ * Currently, execution is typically handled by the legacy agent-runner.
+ */
 app.post('/api/execute', (_req: Request, res: Response) => {
     return res.status(501).json({
         error: 'Execution pipeline is not implemented in openclaw-engine yet. Use planning endpoints under /api/plan.',
