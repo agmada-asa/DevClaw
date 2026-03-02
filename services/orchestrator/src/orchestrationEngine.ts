@@ -30,23 +30,6 @@ export interface OrchestrationEngine {
     execute(input: ExecuteInput): Promise<ExecuteResult>;
 }
 
-class LegacyPlanningEngine {
-    async plan(input: PlanInput): Promise<ArchitecturePlan> {
-        console.log('================================================================================');
-        console.log('🚀 Orchestrator is using LEGACY engine for planning');
-        console.log('================================================================================');
-        const plannerUrl = process.env.ARCHITECTURE_PLANNER_URL || 'http://localhost:3020';
-        const plannerRes = await axios.post(`${plannerUrl}/api/plan`, {
-            requestId: input.intake.requestId,
-            userId: input.intake.userId,
-            repo: input.repoFullName,
-            description: input.intake.message,
-            issueNumber: input.issueNumber,
-        });
-        return plannerRes.data;
-    }
-}
-
 class LegacyExecutionEngine {
     async execute(input: ExecuteInput): Promise<ExecuteResult> {
         console.log('================================================================================');
@@ -124,7 +107,7 @@ class OpenClawExecutionEngine {
 
 class CombinedOrchestrationEngine implements OrchestrationEngine {
     constructor(
-        private readonly planning: LegacyPlanningEngine | OpenClawPlanningEngine,
+        private readonly planning: OpenClawPlanningEngine,
         private readonly execution: LegacyExecutionEngine | OpenClawExecutionEngine
     ) { }
 
@@ -139,12 +122,9 @@ class CombinedOrchestrationEngine implements OrchestrationEngine {
 
 export const getOrchestrationEngine = (): OrchestrationEngine => {
     const defaultEngine = (process.env.ORCHESTRATION_ENGINE || 'legacy').toLowerCase();
-    const planningEngine = (process.env.PLANNING_ENGINE || defaultEngine).toLowerCase();
     const executionEngine = (process.env.EXECUTION_ENGINE || defaultEngine).toLowerCase();
 
-    const planning = planningEngine === 'openclaw'
-        ? new OpenClawPlanningEngine()
-        : new LegacyPlanningEngine();
+    const planning = new OpenClawPlanningEngine();
 
     const execution = executionEngine === 'openclaw'
         ? new OpenClawExecutionEngine()

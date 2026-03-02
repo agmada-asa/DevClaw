@@ -36,7 +36,7 @@ describe('Telegram Bot message formatting', () => {
         await handleTextMessage(mockCtx);
 
         expect(mockReply).toHaveBeenCalledWith(
-            'To submit a new request, please start your message with /request or /task followed by your task description. Use /repo <owner>/<repo> to link a GitHub repository.'
+            'Invalid command. Please use /help to see the list of available commands and the setup flow.'
         );
         expect(axios.post).not.toHaveBeenCalled();
     });

@@ -157,23 +157,38 @@ httpApp.post('/api/send', async (req: express.Request, res: express.Response) =>
     }
 });
 
-// Always start the internal HTTP server so the Gateway can send proactive messages
-const BOT_HTTP_PORT = process.env.BOT_HTTP_PORT || 3002;
-httpApp.listen(BOT_HTTP_PORT, () => {
-    console.log(`[Telegram] Internal HTTP server listening on port ${BOT_HTTP_PORT}`);
-});
-
 // Only launch the bot and register shutdown hooks when running directly
 if (require.main === module) {
+    // Always start the internal HTTP server so the Gateway can send proactive messages
+    const BOT_HTTP_PORT = process.env.BOT_HTTP_PORT || 3002;
+    httpApp.listen(BOT_HTTP_PORT, () => {
+        console.log(`[Telegram] Internal HTTP server listening on port ${BOT_HTTP_PORT}`);
+    });
+
     bot.launch().then(() => {
         console.log('[Telegram] Bot started.');
     }).catch((err) => {
-        console.error('[Telegram] Failed to start bot:', err);
+        console.error('[Telegram] Failed to start bot:', err.message);
+        if (err.message.includes('ECONNRESET') || err.message.includes('ETIMEDOUT') || err.message.includes('ECONNREFUSED')) {
+            console.error('[Telegram] 🚨 Network Error: Cannot reach api.telegram.org. If you are in a restricted region, please ensure your system proxy or VPN is running.');
+        }
     });
 
     // Enable graceful stop
-    process.once('SIGINT', () => bot.stop('SIGINT'));
-    process.once('SIGTERM', () => bot.stop('SIGTERM'));
+    process.once('SIGINT', () => {
+        try {
+            bot.stop('SIGINT');
+        } catch (e) {
+            // bot wasn't running
+        }
+    });
+    process.once('SIGTERM', () => {
+        try {
+            bot.stop('SIGTERM');
+        } catch (e) {
+            // bot wasn't running
+        }
+    });
 }
 
 export { bot, httpApp };
