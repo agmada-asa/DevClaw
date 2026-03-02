@@ -11,7 +11,9 @@
   ],
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev --parallel",
+    "dev": "turbo run dev",
+    "dev:servers": "turbo run dev --filter=openclaw-gateway --filter=orchestrator --filter=architecture-planner --filter=openclaw-engine --filter=agent-runner",
+    "build:servers": "turbo run build --filter=openclaw-gateway --filter=orchestrator --filter=architecture-planner --filter=openclaw-engine --filter=agent-runner",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
