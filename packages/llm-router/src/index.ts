@@ -69,36 +69,46 @@ async function callProvider(
 //   import { chat } from '@devclaw/llm-router';
 //   const reply = await chat({ role: 'generator', messages: [...], requestId: '...' });
 //
-// If the primary provider fails and a fallback is configured (e.g. generator
-// falls back from FLock to Venice), it retries automatically.
+// Flow: try primary up to (1 + maxRetries) times, then try fallback if eligible.
 export async function chat(req: ChatRequest): Promise<ChatResponse> {
   const config = MODEL_CONFIG[req.role];
   if (!config) {
     throw new Error(`[llm-router] No model config for role: ${req.role}`);
   }
 
-  const { timeoutMs } = config.policy;
+  const { timeoutMs, maxRetries, fallbackOn } = config.policy;
+  const maxAttempts = 1 + maxRetries;
+  let lastErr: unknown;
 
-  let primaryErr: unknown;
-  try {
-    return await callProvider(config.provider, config.modelId, req, timeoutMs);
-  } catch (err) {
-    primaryErr = err;
+  // Retry loop — keeps trying the primary provider while:
+  //   (a) the error is listed in fallbackOn (i.e. transient, worth retrying), and
+  //   (b) we still have attempts remaining.
+  // Permanent errors (e.g. 401) break out immediately on the first failure.
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await callProvider(config.provider, config.modelId, req, timeoutMs);
+    } catch (err) {
+      lastErr = err;
+      const retryable = shouldFallback(err, fallbackOn);
+      if (!retryable || attempt === maxAttempts) break;
+      console.warn(
+        `[llm-router] Attempt ${attempt}/${maxAttempts} failed for role "${req.role}" on ` +
+        `"${config.provider}" — retrying.`,
+      );
+    }
   }
 
-  // Only attempt the fallback if this error type is listed in fallbackOn.
-  // This prevents wasting a fallback on permanent failures like 401 (bad key)
-  // that would fail on the second provider for exactly the same reason.
-  if (config.fallback && shouldFallback(primaryErr, config.policy.fallbackOn)) {
-    const errMsg = primaryErr instanceof Error ? primaryErr.message : String(primaryErr);
+  // After exhausting retries, try the fallback provider if configured and eligible.
+  if (config.fallback && shouldFallback(lastErr, fallbackOn)) {
+    const errMsg = lastErr instanceof Error ? lastErr.message : String(lastErr);
     console.warn(
-      `[llm-router] Primary provider "${config.provider}" failed for role "${req.role}" — ` +
+      `[llm-router] Primary "${config.provider}" exhausted for role "${req.role}" — ` +
       `falling back to "${config.fallback.provider}". Reason: ${errMsg}`,
     );
     return await callProvider(config.fallback.provider, config.fallback.modelId, req, timeoutMs);
   }
 
-  throw primaryErr;
+  throw lastErr;
 }
 
 // Re-export types so callers don't need to import from internal paths.
