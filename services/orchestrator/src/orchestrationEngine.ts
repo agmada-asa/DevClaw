@@ -30,8 +30,11 @@ export interface OrchestrationEngine {
     execute(input: ExecuteInput): Promise<ExecuteResult>;
 }
 
-class LegacyOrchestrationEngine implements OrchestrationEngine {
+class LegacyPlanningEngine {
     async plan(input: PlanInput): Promise<ArchitecturePlan> {
+        console.log('================================================================================');
+        console.log('🚀 Orchestrator is using LEGACY engine for planning');
+        console.log('================================================================================');
         const plannerUrl = process.env.ARCHITECTURE_PLANNER_URL || 'http://localhost:3020';
         const plannerRes = await axios.post(`${plannerUrl}/api/plan`, {
             requestId: input.intake.requestId,
@@ -42,8 +45,13 @@ class LegacyOrchestrationEngine implements OrchestrationEngine {
         });
         return plannerRes.data;
     }
+}
 
+class LegacyExecutionEngine {
     async execute(input: ExecuteInput): Promise<ExecuteResult> {
+        console.log('================================================================================');
+        console.log('🚀 Orchestrator is using LEGACY engine for execution');
+        console.log('================================================================================');
         const runnerUrl = process.env.AGENT_RUNNER_URL || 'http://localhost:3030';
         const execRes = await axios.post(`${runnerUrl}/api/execute`, {
             runId: input.runId,
@@ -65,12 +73,14 @@ class LegacyOrchestrationEngine implements OrchestrationEngine {
     }
 }
 
-class OpenClawOrchestrationEngine implements OrchestrationEngine {
+class OpenClawPlanningEngine {
     private readonly baseUrl = process.env.OPENCLAW_ENGINE_URL || 'http://localhost:3040';
     private readonly planPath = process.env.OPENCLAW_PLAN_PATH || '/api/plan';
-    private readonly executePath = process.env.OPENCLAW_EXECUTE_PATH || '/api/execute';
 
     async plan(input: PlanInput): Promise<ArchitecturePlan> {
+        console.log('================================================================================');
+        console.log('🚀 Orchestrator is using OPENCLAW engine for planning');
+        console.log('================================================================================');
         const planRes = await axios.post(`${this.baseUrl}${this.planPath}`, {
             requestId: input.intake.requestId,
             userId: input.intake.userId,
@@ -81,8 +91,16 @@ class OpenClawOrchestrationEngine implements OrchestrationEngine {
         });
         return planRes.data;
     }
+}
+
+class OpenClawExecutionEngine {
+    private readonly baseUrl = process.env.OPENCLAW_ENGINE_URL || 'http://localhost:3040';
+    private readonly executePath = process.env.OPENCLAW_EXECUTE_PATH || '/api/execute';
 
     async execute(input: ExecuteInput): Promise<ExecuteResult> {
+        console.log('================================================================================');
+        console.log('🚀 Orchestrator is using OPENCLAW engine for execution');
+        console.log('================================================================================');
         const execRes = await axios.post(`${this.baseUrl}${this.executePath}`, {
             runId: input.runId,
             planId: input.planId,
@@ -104,10 +122,34 @@ class OpenClawOrchestrationEngine implements OrchestrationEngine {
     }
 }
 
-export const getOrchestrationEngine = (): OrchestrationEngine => {
-    const engine = (process.env.ORCHESTRATION_ENGINE || 'legacy').toLowerCase();
-    if (engine === 'openclaw') {
-        return new OpenClawOrchestrationEngine();
+class CombinedOrchestrationEngine implements OrchestrationEngine {
+    constructor(
+        private readonly planning: LegacyPlanningEngine | OpenClawPlanningEngine,
+        private readonly execution: LegacyExecutionEngine | OpenClawExecutionEngine
+    ) { }
+
+    plan(input: PlanInput): Promise<ArchitecturePlan> {
+        return this.planning.plan(input);
     }
-    return new LegacyOrchestrationEngine();
+
+    execute(input: ExecuteInput): Promise<ExecuteResult> {
+        return this.execution.execute(input);
+    }
+}
+
+export const getOrchestrationEngine = (): OrchestrationEngine => {
+    const defaultEngine = (process.env.ORCHESTRATION_ENGINE || 'legacy').toLowerCase();
+    const planningEngine = (process.env.PLANNING_ENGINE || defaultEngine).toLowerCase();
+    const executionEngine = (process.env.EXECUTION_ENGINE || defaultEngine).toLowerCase();
+
+    const planning = planningEngine === 'openclaw'
+        ? new OpenClawPlanningEngine()
+        : new LegacyPlanningEngine();
+
+    const execution = executionEngine === 'openclaw'
+        ? new OpenClawExecutionEngine()
+        : new LegacyExecutionEngine();
+
+    return new CombinedOrchestrationEngine(planning, execution);
 };
+// trigger reload
