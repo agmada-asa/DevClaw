@@ -1,9 +1,17 @@
 # agent-runner
 
 ## Purpose
-TBD implementation for the authoritative boundary defined in /Users/agmad/Documents/DevClaw/docs/architecture/system-architecture.md.
+Dispatches approved plans to an execution backend.
 
-## Initial Tasks
-1. Define public interface and contracts.
-2. Add minimal health check and logging.
-3. Add unit tests for core behavior.
+## Endpoints
+- `GET /health`
+- `POST /api/execute`
+
+## Backend Selection
+- `RUNNER_ENGINE=stub` (default): deterministic local dispatch.
+- `RUNNER_ENGINE=openclaw`: forwards execution to OpenClaw.
+
+### OpenClaw Config
+- `OPENCLAW_RUNNER_URL` (default: `http://localhost:3040`)
+- `OPENCLAW_RUNNER_EXECUTE_PATH` (default: `/api/execute`)
+- `ORCHESTRATOR_CALLBACK_URL` (optional)

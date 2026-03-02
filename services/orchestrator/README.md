@@ -1,9 +1,13 @@
 # orchestrator
 
 ## Purpose
-TBD implementation for the authoritative boundary defined in /Users/agmad/Documents/DevClaw/docs/architecture/system-architecture.md.
+Owns workflow state transitions, approval gating, and dispatch to planning/execution engines.
 
-## Initial Tasks
-1. Define public interface and contracts.
-2. Add minimal health check and logging.
-3. Add unit tests for core behavior.
+## Engine Flags
+- `ORCHESTRATION_ENGINE=legacy|openclaw` (global default)
+- `PLANNING_ENGINE=legacy|openclaw` (optional override)
+- `EXECUTION_ENGINE=legacy|openclaw` (optional override)
+
+Legacy mode calls:
+- `ARCHITECTURE_PLANNER_URL` (default `http://localhost:3020`)
+- `AGENT_RUNNER_URL` (default `http://localhost:3030`)

@@ -1,8 +1,8 @@
 {
-  "name": "openclaw-gateway",
+  "name": "agent-runner",
   "version": "0.1.0",
   "private": true,
-  "description": "Interface adapter and session routing",
+  "description": "Execution dispatcher for generator/reviewer loops with pluggable backends.",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@devclaw/contracts": "*",
-    "@supabase/supabase-js": "^2.98.0",
     "axios": "^1.13.6",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

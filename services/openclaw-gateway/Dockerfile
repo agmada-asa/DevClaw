@@ -1,28 +1,29 @@
 FROM node:20-alpine AS builder
+# Set working directory
+WORKDIR /app
+RUN npm install -g turbo
+COPY . .
+RUN turbo prune openclaw-gateway --docker
 
+# Add lockfile and package.json's of isolated subworkspace
+FROM node:20-alpine AS installer
 WORKDIR /app
 
-# Install dependencies
-COPY package*.json ./
+# First install dependencies (as they change less often)
+COPY .gitignore .gitignore
+COPY --from=builder /app/out/json/ .
+COPY --from=builder /app/out/package-lock.json ./package-lock.json
 RUN npm install
 
-# Copy source code and build
-COPY . .
-RUN npm run build
+# Build the project and its dependencies
+COPY --from=builder /app/out/full/ .
+COPY turbo.json turbo.json
 
-FROM node:20-alpine
+RUN npx turbo run build --filter=openclaw-gateway...
 
+FROM node:20-alpine AS runner
 WORKDIR /app
+COPY --from=installer /app/ .
 
-# Copy package.json and install production dependencies
-COPY package*.json ./
-RUN npm install --omit=dev
-
-# Copy built artifacts from the builder stage
-COPY --from=builder /app/dist ./dist
-
-# Expose the API port
 EXPOSE 3001
-
-# Command to run the application
-CMD ["npm", "start"]
+CMD [ "node", "services/openclaw-gateway/dist/index.js" ]

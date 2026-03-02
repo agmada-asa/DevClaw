@@ -55,3 +55,9 @@ You can now use this securely generated `https` URL to access your local gateway
 
 - **Build Failures:** If `docker-compose up -d --build` fails, ensure you have ran `npm install` locally to let the builder cache dependencies properly.
 - **Service Not Reachable:** Make sure the `gateway` container is running without errors by checking its logs: `docker-compose logs gateway`.
+
+- **Restart cloudflared container:**
+```bash
+# Restart the cloudflared container
+docker-compose restart cloudflared
+```

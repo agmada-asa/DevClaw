@@ -3,8 +3,8 @@ version: '3.8'
 services:
   gateway:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ../../
+      dockerfile: services/openclaw-gateway/Dockerfile
     env_file:
       - .env
     init: true
@@ -12,7 +12,7 @@ services:
 
   cloudflared:
     image: cloudflare/cloudflared:latest
-    command: tunnel --no-autoupdate --url http://gateway:3001
+    command: tunnel --no-autoupdate --protocol http2 --url http://gateway:3001
     depends_on:
       - gateway
     restart: unless-stopped
