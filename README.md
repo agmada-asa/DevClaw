@@ -19,6 +19,7 @@ Hackathon monorepo for DevClaw (product layer) + CEOClaw (founder layer).
 │   ├── openclaw-gateway/         # Interface adapter and session routing
 │   ├── orchestrator/             # Main workflow state machine and policy checks
 │   ├── architecture-planner/     # GLM-backed plan builder and risk flags
+│   ├── openclaw-engine/          # OpenClaw planning engine (plan create/update)
 │   ├── agent-runner/             # Generator/Reviewer pair orchestration
 │   ├── integration-verifier/     # Cross-service test and validation runner
 │   ├── report-generator/         # PR summary, changelog, walkthrough output
