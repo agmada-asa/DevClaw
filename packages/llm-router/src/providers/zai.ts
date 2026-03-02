@@ -10,6 +10,7 @@ export async function callZai(
   messages: ChatMessage[],
   temperature = 0.2,
   maxTokens = 4096,
+  timeoutMs?: number,
 ): Promise<ChatResponse> {
   const apiKey = process.env.ZAI_API_KEY;
   if (!apiKey) throw new Error('[llm-router] ZAI_API_KEY is not set');
@@ -27,6 +28,7 @@ export async function callZai(
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
+      ...(timeoutMs !== undefined && { timeout: timeoutMs }),
     },
   );
 

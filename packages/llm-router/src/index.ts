@@ -12,15 +12,16 @@ async function callProvider(
   provider: Provider,
   modelId: string,
   req: ChatRequest,
+  timeoutMs?: number,
 ): Promise<ChatResponse> {
   const ctx = { role: req.role, provider, model: modelId, requestId: req.requestId };
 
   try {
     const { messages, temperature, maxTokens } = req;
     switch (provider) {
-      case 'flock':  return await callFlock(modelId, messages, temperature, maxTokens);
-      case 'venice': return await callVenice(modelId, messages, temperature, maxTokens);
-      case 'zai':    return await callZai(modelId, messages, temperature, maxTokens);
+      case 'flock':  return await callFlock(modelId, messages, temperature, maxTokens, timeoutMs);
+      case 'venice': return await callVenice(modelId, messages, temperature, maxTokens, timeoutMs);
+      case 'zai':    return await callZai(modelId, messages, temperature, maxTokens, timeoutMs);
       default: {
         const _exhaustive: never = provider;
         throw new Error(`[llm-router] Unknown provider: ${_exhaustive}`);
@@ -63,8 +64,10 @@ export async function chat(req: ChatRequest): Promise<ChatResponse> {
     throw new Error(`[llm-router] No model config for role: ${req.role}`);
   }
 
+  const { timeoutMs } = config.policy;
+
   try {
-    return await callProvider(config.provider, config.modelId, req);
+    return await callProvider(config.provider, config.modelId, req, timeoutMs);
   } catch (primaryErr: unknown) {
     if (!config.fallback) throw primaryErr;
 
@@ -74,7 +77,7 @@ export async function chat(req: ChatRequest): Promise<ChatResponse> {
       `falling back to "${config.fallback.provider}". Reason: ${errMsg}`,
     );
 
-    return await callProvider(config.fallback.provider, config.fallback.modelId, req);
+    return await callProvider(config.fallback.provider, config.fallback.modelId, req, timeoutMs);
   }
 }
 

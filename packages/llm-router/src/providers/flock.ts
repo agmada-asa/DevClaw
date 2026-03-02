@@ -10,6 +10,7 @@ export async function callFlock(
   messages: ChatMessage[],
   temperature = 0.2,
   maxTokens = 4096,
+  timeoutMs?: number,
 ): Promise<ChatResponse> {
   const apiKey = process.env.FLOCK_API_KEY;
   if (!apiKey) throw new Error('[llm-router] FLOCK_API_KEY is not set');
@@ -27,6 +28,7 @@ export async function callFlock(
         Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
+      ...(timeoutMs !== undefined && { timeout: timeoutMs }),
     },
   );
 
