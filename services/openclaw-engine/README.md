@@ -1,18 +1,19 @@
-# openclaw-engine
+# OpenClaw Engine Service
 
 ## Purpose
-OpenClaw planning engine at `http://localhost:3040` for:
-- creating architecture plans,
-- updating existing plans,
-- producing a planning blueprint for later isolated branch + agent execution.
-- using the real local OpenClaw CLI runtime for planning turns.
+The OpenClaw Engine service (`http://localhost:3040`) is the dedicated architecture planner for DevClaw. 
+
+It receives tasks routed by the Orchestrator and leverages the local OpenClaw CLI to:
+- Create initial architecture plans (`/api/plan`)
+- Iteratively update existing plans based on feedback (`/api/plan/:planId/update`)
+- Persist plan revisions and blueprints for subsequent execution stages
 
 ## Endpoints
-- `GET /health`
-- `POST /api/plan`
-- `GET /api/plan/:planId`
-- `POST /api/plan/:planId/update`
-- `POST /api/execute` (currently returns `501 planning_only`)
+- `GET /health`: Service status and capabilities
+- `POST /api/plan`: Create a new plan from a task description
+- `GET /api/plan/:planId`: Retrieve an existing plan by ID
+- `POST /api/plan/:planId/update`: Modify a plan with a new change request
+- `POST /api/execute`: (Currently returns `501 Not Implemented`; reserved for future OpenClaw native execution)
 
 ## OpenClaw Runtime Configuration
 - `OPENCLAW_CLI_BIN` (default: `openclaw`)
