@@ -61,18 +61,20 @@ export const handleTextMessage = async (ctx: Context<any>) => {
         return ctx.reply(`Please click this link to link your GitHub account: ${loginUrl}\n\nOnce complete, you can use /status to check your connection or /repo <owner>/<repo> to link a project.\n\nNote: If you are running locally, make sure the gateway is accessible or update GATEWAY_URL to a public tunnel.`);
     }
 
-    const isTaskRequest = text.toLowerCase().startsWith('/task ') ||
-        text.toLowerCase() === '/task' ||
-        text.toLowerCase().startsWith('/request ') ||
-        text.toLowerCase() === '/request';
+    const tLower = text.toLowerCase();
+    const isTaskRequest = tLower.startsWith('/task ') || tLower === '/task' ||
+        tLower.startsWith('/request ') || tLower === '/request';
 
-    const isRepoLinkRequest = text.toLowerCase().startsWith('/repo ') ||
-        text.toLowerCase() === '/repo';
+    const isRepoLinkRequest = tLower.startsWith('/repo ') || tLower === '/repo';
+    const isReposListRequest = tLower === '/repos';
+    const isStatusRequest = tLower === '/status';
 
-    const isReposListRequest = text.toLowerCase() === '/repos';
-    const isStatusRequest = text.toLowerCase() === '/status';
+    const isApproveRequest = tLower.startsWith('/approve ') || tLower === '/approve';
+    const isRejectRequest = tLower.startsWith('/reject ') || tLower === '/reject';
+    const isRefineRequest = tLower.startsWith('/refine ') || tLower === '/refine';
 
-    if (!isTaskRequest && !isRepoLinkRequest && !isReposListRequest && !isStatusRequest) {
+    if (!isTaskRequest && !isRepoLinkRequest && !isReposListRequest && !isStatusRequest &&
+        !isApproveRequest && !isRejectRequest && !isRefineRequest) {
         return ctx.reply('Invalid command. Please use /help to see the list of available commands and the setup flow.');
     }
 
@@ -83,7 +85,12 @@ export const handleTextMessage = async (ctx: Context<any>) => {
         text: text,
         messageId: ctx.message.message_id,
         timestamp: new Date().toISOString(),
-        type: isReposListRequest ? 'repos' : (isRepoLinkRequest ? 'repo_link' : (isStatusRequest ? 'status' : 'task'))
+        type: isReposListRequest ? 'repos' :
+            isRepoLinkRequest ? 'repo_link' :
+                isStatusRequest ? 'status' :
+                    isApproveRequest ? 'approve' :
+                        isRejectRequest ? 'reject' :
+                            isRefineRequest ? 'refine' : 'task'
     };
 
     try {
@@ -102,6 +109,12 @@ export const handleTextMessage = async (ctx: Context<any>) => {
                     replyMessage = 'Repository link request sent to gateway.';
                 } else if (isStatusRequest) {
                     replyMessage = 'Status request sent to gateway.';
+                } else if (isApproveRequest) {
+                    replyMessage = 'Approval sent to gateway.';
+                } else if (isRejectRequest) {
+                    replyMessage = 'Rejection sent to gateway.';
+                } else if (isRefineRequest) {
+                    replyMessage = 'Refinement request sent to gateway. Evaluating...';
                 } else {
                     replyMessage = 'Task received and sent to gateway. Evaluating...';
                 }
@@ -133,6 +146,9 @@ bot.command('github_login', (ctx) => handleTextMessage(ctx));
 bot.command('repo', (ctx) => handleTextMessage(ctx));
 bot.command('task', (ctx) => handleTextMessage(ctx));
 bot.command('request', (ctx) => handleTextMessage(ctx));
+bot.command('approve', (ctx) => handleTextMessage(ctx));
+bot.command('reject', (ctx) => handleTextMessage(ctx));
+bot.command('refine', (ctx) => handleTextMessage(ctx));
 
 // Also keep the generic text handler as a catch-all for any messages
 bot.on('text', handleTextMessage);

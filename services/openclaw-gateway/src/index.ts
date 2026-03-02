@@ -241,6 +241,59 @@ app.post('/api/ingress/message', async (req: Request, res: Response): Promise<an
         }
     }
 
+    if (payload.type === 'approve' || payload.type === 'reject') {
+        const parts = text.split(' ');
+        if (parts.length < 2) {
+            return res.status(200).json({ success: false, message: `Invalid ${payload.type} format. Use /${payload.type} <planId>` });
+        }
+        const planId = parts[1].trim();
+
+        const orchestratorUrl = process.env.ORCHESTRATOR_URL || 'http://localhost:3010';
+        try {
+            console.log(`[Gateway] Dispatching ${payload.type} for plan ${planId}`);
+            const orchResponse = await axios.post(`${orchestratorUrl}/api/${payload.type}`, { planId });
+            return res.status(200).json(orchResponse.data);
+        } catch (err: any) {
+            const detail = err.response?.data?.error || err.message;
+            console.error(`[Gateway] Orchestrator ${payload.type} failed:`, detail);
+            return res.status(200).json({
+                success: false,
+                message: `Failed to process ${payload.type} — the orchestrator encountered an error.`,
+            });
+        }
+    }
+
+    if (payload.type === 'refine') {
+        const parts = text.split(' ');
+        if (parts.length < 3) {
+            return res.status(200).json({ success: false, message: 'Invalid refine format. Use /refine <planId> <instructions>' });
+        }
+        const planId = parts[1].trim();
+        const refinement = parts.slice(2).join(' ').trim();
+
+        const orchestratorUrl = process.env.ORCHESTRATOR_URL || 'http://localhost:3010';
+        try {
+            console.log(`[Gateway] Dispatching refine for plan ${planId}`);
+            const orchResponse = await axios.post(`${orchestratorUrl}/api/refine`, {
+                planId,
+                refinement,
+                userId,
+                channel: provider,
+                chatId: payload.chatId ? payload.chatId.toString() : ''
+            }, {
+                timeout: 30000,
+            });
+            return res.status(200).json(orchResponse.data);
+        } catch (err: any) {
+            const detail = err.response?.data?.error || err.message;
+            console.error('[Gateway] Orchestrator refine failed:', detail);
+            return res.status(200).json({
+                success: false,
+                message: 'Failed to process refinement. Ensure the planId is correct and try again.',
+            });
+        }
+    }
+
     if (payload.type === 'task') {
         // ── Validate user has a linked repo and GitHub token ──────────────────
         if (!supabase) {

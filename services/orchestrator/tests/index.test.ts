@@ -104,7 +104,7 @@ describe('Orchestrator API', () => {
         expect(res.body.success).toBe(true);
         expect(res.body.issueNumber).toBe(42);
         expect(res.body.issueUrl).toBe('https://github.com/owner/repo/issues/42');
-        expect(res.body.message).toContain('opened a GitHub issue');
+        expect(res.body.message).toContain('Created new issue');
         expect(mockedCreateOrDedupe).toHaveBeenCalledWith(
             'ghtoken',
             'owner',
@@ -132,7 +132,7 @@ describe('Orchestrator API', () => {
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
         expect(res.body.issueNumber).toBe(7);
-        expect(res.body.message).toContain('existing issue');
+        expect(res.body.message).toContain('Linked to existing issue');
         expect(mockedCreateOrDedupe).toHaveBeenCalledTimes(1);
     });
 

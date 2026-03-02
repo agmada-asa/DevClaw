@@ -73,18 +73,20 @@ export const handleMessage = async (message: any) => {
         return message.reply(WELCOME_MESSAGE);
     }
 
-    const isTaskRequest = text.toLowerCase().startsWith('/task ') ||
-        text.toLowerCase() === '/task' ||
-        text.toLowerCase().startsWith('/request ') ||
-        text.toLowerCase() === '/request';
+    const tLower = text.toLowerCase();
+    const isTaskRequest = tLower.startsWith('/task ') || tLower === '/task' ||
+        tLower.startsWith('/request ') || tLower === '/request';
 
-    const isRepoLinkRequest = text.toLowerCase().startsWith('/repo ') ||
-        text.toLowerCase() === '/repo';
+    const isRepoLinkRequest = tLower.startsWith('/repo ') || tLower === '/repo';
+    const isReposListRequest = tLower === '/repos';
+    const isStatusRequest = tLower === '/status';
 
-    const isReposListRequest = text.toLowerCase() === '/repos';
-    const isStatusRequest = text.toLowerCase() === '/status';
+    const isApproveRequest = tLower.startsWith('/approve ') || tLower === '/approve';
+    const isRejectRequest = tLower.startsWith('/reject ') || tLower === '/reject';
+    const isRefineRequest = tLower.startsWith('/refine ') || tLower === '/refine';
 
-    if (!isTaskRequest && !isRepoLinkRequest && !isReposListRequest && !isStatusRequest) {
+    if (!isTaskRequest && !isRepoLinkRequest && !isReposListRequest && !isStatusRequest &&
+        !isApproveRequest && !isRejectRequest && !isRefineRequest) {
         return message.reply('Invalid command. Please use /help to see the list of available commands and the setup flow.');
     }
 
@@ -98,7 +100,12 @@ export const handleMessage = async (message: any) => {
             text: text,
             messageId: message.id._serialized,
             timestamp: new Date().toISOString(),
-            type: isReposListRequest ? 'repos' : (isRepoLinkRequest ? 'repo_link' : (isStatusRequest ? 'status' : 'task'))
+            type: isReposListRequest ? 'repos' :
+                isRepoLinkRequest ? 'repo_link' :
+                    isStatusRequest ? 'status' :
+                        isApproveRequest ? 'approve' :
+                            isRejectRequest ? 'reject' :
+                                isRefineRequest ? 'refine' : 'task'
         };
 
         const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3001/api/ingress/message';
@@ -116,6 +123,12 @@ export const handleMessage = async (message: any) => {
                     replyMessage = 'Repository link request sent to gateway.';
                 } else if (isStatusRequest) {
                     replyMessage = 'Status request sent to gateway.';
+                } else if (isApproveRequest) {
+                    replyMessage = 'Approval sent to gateway.';
+                } else if (isRejectRequest) {
+                    replyMessage = 'Rejection sent to gateway.';
+                } else if (isRefineRequest) {
+                    replyMessage = 'Refinement request sent to gateway. Evaluating...';
                 } else {
                     replyMessage = 'Task received and sent to gateway. Evaluating...';
                 }

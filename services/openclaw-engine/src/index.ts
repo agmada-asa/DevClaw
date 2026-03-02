@@ -71,7 +71,7 @@ app.post('/api/plan', async (req: Request, res: Response): Promise<any> => {
             issueNumber: typeof issueNumber === 'number' ? issueNumber : undefined,
         });
 
-        const saved = planStore.saveNewPlan({
+        const saved = await planStore.saveNewPlan({
             plan: created.plan,
             source: normalizeSource(source),
             blueprint: created.blueprint,
@@ -93,13 +93,13 @@ app.post('/api/plan', async (req: Request, res: Response): Promise<any> => {
  * 
  * Retrieves an existing plan from the local plan store.
  */
-app.get('/api/plan/:planId', (req: Request, res: Response): any => {
+app.get('/api/plan/:planId', async (req: Request, res: Response): Promise<any> => {
     const planId = String(req.params.planId || '').trim();
     if (!planId) {
         return res.status(400).json({ error: 'Missing planId path parameter' });
     }
 
-    const found = planStore.getPlan(planId);
+    const found = await planStore.getPlan(planId);
     if (!found) {
         return res.status(404).json({ error: 'Plan not found' });
     }
@@ -125,7 +125,7 @@ app.post('/api/plan/:planId/update', async (req: Request, res: Response): Promis
         return res.status(400).json({ error: 'Missing required field: changeRequest' });
     }
 
-    const existing = planStore.getPlan(planId);
+    const existing = await planStore.getPlan(planId);
     if (!existing) {
         return res.status(404).json({ error: 'Plan not found' });
     }
@@ -139,7 +139,7 @@ app.post('/api/plan/:planId/update', async (req: Request, res: Response): Promis
             existingBlueprint: existing.blueprint,
         });
 
-        const saved = planStore.savePlanRevision({
+        const saved = await planStore.savePlanRevision({
             planId,
             plan: updated.plan,
             source: normalizeSource(source),
