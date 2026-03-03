@@ -1,5 +1,6 @@
 import request from 'supertest';
 import axios from 'axios';
+import { ArchitecturePlan } from '@devclaw/contracts';
 jest.mock('@supabase/supabase-js', () => {
     const mockSupabase = {
         from: jest.fn().mockReturnThis(),
@@ -21,13 +22,55 @@ process.env.SUPABASE_SERVICE_ROLE_KEY = 'testkey';
 
 import app from '../src/index';
 import { createOrDedupeIssue } from '../src/githubClient';
+import {
+    buildExecutionSubTasks,
+    provisionIsolatedExecutionEnvironment,
+} from '../src/executionPreparation';
 
 // Mock axios and githubClient so we don't make real HTTP calls
 jest.mock('axios');
 jest.mock('../src/githubClient');
+jest.mock('../src/executionPreparation', () => ({
+    buildExecutionSubTasks: jest.fn(() => [
+        {
+            id: 'plan-123-frontend',
+            domain: 'frontend',
+            agent: 'Frontend',
+            objective: 'Fix login flow',
+            files: ['apps/web/src/pages/Login.tsx'],
+            generator: 'frontend-gen',
+            reviewer: 'frontend-reviewer',
+        },
+    ]),
+    provisionIsolatedExecutionEnvironment: jest.fn(async () => ({
+        workspacePath: '/tmp/devclaw-isolated/runId',
+        branchName: 'devclaw/fix-plan-123-login-flow',
+        baseBranch: 'main',
+    })),
+    resolveApprovedPlan: jest.fn((details: any) => details?.plan || details),
+    resolvePreferredExecutionBranch: jest.fn(() => ({
+        branchName: 'devclaw/fix-plan-123-login-flow',
+        baseBranch: 'main',
+    })),
+}));
 
 const mockedAxiosPost = axios.post as jest.MockedFunction<typeof axios.post>;
 const mockedCreateOrDedupe = createOrDedupeIssue as jest.MockedFunction<typeof createOrDedupeIssue>;
+const mockedBuildExecutionSubTasks = buildExecutionSubTasks as jest.MockedFunction<typeof buildExecutionSubTasks>;
+const mockedProvisionIsolation = provisionIsolatedExecutionEnvironment as jest.MockedFunction<typeof provisionIsolatedExecutionEnvironment>;
+
+const mockApprovedPlan: ArchitecturePlan = {
+    planId: 'plan-123',
+    requestId: 'req-abc',
+    summary: 'Fix login flow',
+    affectedFiles: ['apps/web/src/pages/Login.tsx', 'services/auth/src/login.ts'],
+    agentAssignments: [
+        { domain: 'frontend', generator: 'frontend-gen', reviewer: 'frontend-reviewer' },
+        { domain: 'backend', generator: 'backend-gen', reviewer: 'backend-reviewer' },
+    ],
+    riskFlags: [],
+    status: 'approved',
+};
 
 describe('Orchestrator API', () => {
     beforeEach(() => {
@@ -43,7 +86,20 @@ describe('Orchestrator API', () => {
         ((mockSupabase as any).match as jest.Mock).mockReturnValue(mockSupabase);
         ((mockSupabase as any).single as jest.Mock).mockImplementation(() => {
             // Depending on the mock, return valid task or github token
-            return Promise.resolve({ data: { id: 'runId', plan_id: 'plan-123', github_token: 'ghtoken' }, error: null });
+            return Promise.resolve({
+                data: {
+                    id: 'runId',
+                    plan_id: 'plan-123',
+                    github_token: 'ghtoken',
+                    user_id: 'u1',
+                    repo: 'owner/repo',
+                    issue_number: 42,
+                    issue_url: 'https://github.com/owner/repo/issues/42',
+                    description: 'Fix login flow',
+                    plan_details: mockApprovedPlan,
+                },
+                error: null,
+            });
         });
         ((mockSupabase as any).upsert as jest.Mock).mockResolvedValue({ data: null, error: null });
     });
@@ -168,6 +224,26 @@ describe('Orchestrator API', () => {
         expect(res.body.success).toBe(true);
         expect(res.body.message).toBe('Task approved and dispatched for execution');
         expect(res.body.execution).toBeDefined();
+        expect(mockedBuildExecutionSubTasks).toHaveBeenCalledWith(expect.objectContaining({ planId: 'plan-123' }));
+        expect(mockedProvisionIsolation).toHaveBeenCalledWith(expect.objectContaining({
+            runId: 'runId',
+            repoFullName: 'owner/repo',
+        }));
+        expect(mockedAxiosPost).toHaveBeenCalledWith(
+            expect.stringContaining('/api/execute'),
+            expect.objectContaining({
+                runId: 'runId',
+                planId: 'plan-123',
+                isolatedEnvironmentPath: '/tmp/devclaw-isolated/runId',
+                executionBranchName: 'devclaw/fix-plan-123-login-flow',
+                executionSubTasks: expect.arrayContaining([
+                    expect.objectContaining({
+                        domain: 'frontend',
+                        agent: 'Frontend',
+                    }),
+                ]),
+            })
+        );
     });
 
     // ── POST /api/reject ────────────────────────────────────────────────────
