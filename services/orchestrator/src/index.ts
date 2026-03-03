@@ -7,6 +7,12 @@ import { v4 as uuidv4 } from 'uuid';
 import { IntakeRequest } from '@devclaw/contracts';
 import { createOrDedupeIssue } from './githubClient';
 import { getOrchestrationEngine } from './orchestrationEngine';
+import {
+    buildExecutionSubTasks,
+    provisionIsolatedExecutionEnvironment,
+    resolveApprovedPlan,
+    resolvePreferredExecutionBranch,
+} from './executionPreparation';
 
 dotenv.config();
 
@@ -277,17 +283,78 @@ app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
     }
 
     let execution: import('./orchestrationEngine').ExecuteResult | undefined;
+    let preparation:
+        | {
+            isolatedEnvironmentPath: string;
+            executionBranchName: string;
+            subTaskCount: number;
+        }
+        | undefined;
     try {
+        const approvedPlan = resolveApprovedPlan(updated.plan_details);
+        if (!approvedPlan) {
+            return res.status(422).json({
+                error: 'Approved task is missing a valid architecture plan.',
+                task: updated,
+            });
+        }
+
+        if (!updated.repo || typeof updated.repo !== 'string') {
+            return res.status(422).json({
+                error: 'Approved task is missing repository metadata for execution.',
+                task: updated,
+            });
+        }
+
+        const executionSubTasks = buildExecutionSubTasks(approvedPlan);
+        const preferredBranch = resolvePreferredExecutionBranch(
+            updated.plan_details,
+            updated.plan_id,
+            updated.description
+        );
+
+        let githubToken: string | undefined;
+        if (updated.user_id) {
+            const { data: userPrefs, error: prefsError } = await supabase
+                .from('user_preferences')
+                .select('github_token')
+                .eq('user_id', updated.user_id)
+                .single();
+
+            if (!prefsError && userPrefs?.github_token) {
+                githubToken = userPrefs.github_token;
+            }
+        }
+
+        const isolatedEnvironment = await provisionIsolatedExecutionEnvironment({
+            runId: updated.id,
+            repoFullName: updated.repo,
+            planId: approvedPlan.planId || updated.plan_id,
+            description: updated.description || approvedPlan.summary,
+            planDetails: updated.plan_details,
+            preferredBranchName: preferredBranch.branchName,
+            githubToken,
+        });
+
+        preparation = {
+            isolatedEnvironmentPath: isolatedEnvironment.workspacePath,
+            executionBranchName: isolatedEnvironment.branchName,
+            subTaskCount: executionSubTasks.length,
+        };
+
         execution = await orchestrationEngine.execute({
             runId: updated.id,
-            planId: updated.plan_id,
-            requestId: updated.plan_details?.requestId,
+            planId: approvedPlan.planId || updated.plan_id,
+            requestId: approvedPlan.requestId,
             userId: updated.user_id,
             repo: updated.repo,
             issueNumber: updated.issue_number,
             issueUrl: updated.issue_url,
             description: updated.description,
-            planDetails: updated.plan_details,
+            planDetails: approvedPlan,
+            executionSubTasks,
+            isolatedEnvironmentPath: isolatedEnvironment.workspacePath,
+            executionBranchName: isolatedEnvironment.branchName,
         });
     } catch (err: any) {
         console.error('[Orchestrator] Failed to dispatch approved task for execution:', formatErrorDetails(err));
@@ -303,6 +370,7 @@ app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
         message: 'Task approved and dispatched for execution',
         task: updated,
         execution,
+        preparation,
     });
 });
 
