@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { ArchitecturePlan, IntakeRequest } from '@devclaw/contracts';
+import { ExecutionSubTask } from './executionPreparation';
 
 export interface PlanInput {
     intake: IntakeRequest;
@@ -24,6 +25,9 @@ export interface ExecuteInput {
     issueUrl?: string;
     description?: string;
     planDetails?: ArchitecturePlan;
+    executionSubTasks?: ExecutionSubTask[];
+    isolatedEnvironmentPath?: string;
+    executionBranchName?: string;
 }
 
 export interface ExecuteResult {
@@ -70,6 +74,9 @@ class LegacyExecutionEngine {
             issueUrl: input.issueUrl,
             description: input.description,
             plan: input.planDetails,
+            executionSubTasks: input.executionSubTasks,
+            isolatedEnvironmentPath: input.isolatedEnvironmentPath,
+            executionBranchName: input.executionBranchName,
         });
 
         return {
@@ -139,6 +146,9 @@ class OpenClawExecutionEngine {
             issueUrl: input.issueUrl,
             description: input.description,
             plan: input.planDetails,
+            executionSubTasks: input.executionSubTasks,
+            isolatedEnvironmentPath: input.isolatedEnvironmentPath,
+            executionBranchName: input.executionBranchName,
             source: 'orchestrator',
         });
 
