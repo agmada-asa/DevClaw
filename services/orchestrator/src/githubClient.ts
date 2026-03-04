@@ -1,6 +1,19 @@
 import axios from 'axios';
 
 const GITHUB_API = 'https://api.github.com';
+const parsePositiveInt = (value: string | undefined, fallback: number): number => {
+    const parsed = Number.parseInt(value || '', 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const GITHUB_SEARCH_TIMEOUT_MS = parsePositiveInt(
+    process.env.ORCHESTRATOR_GITHUB_SEARCH_TIMEOUT_MS,
+    20_000
+);
+const GITHUB_CREATE_TIMEOUT_MS = parsePositiveInt(
+    process.env.ORCHESTRATOR_GITHUB_CREATE_TIMEOUT_MS,
+    30_000
+);
 
 /**
  * Search open issues in a repo for a title match.
@@ -20,6 +33,7 @@ export async function findDuplicateIssue(
                 Authorization: `Bearer ${token}`,
                 Accept: 'application/vnd.github.v3+json',
             },
+            timeout: GITHUB_SEARCH_TIMEOUT_MS,
         });
 
         const items = response.data.items;
@@ -59,6 +73,7 @@ export async function createIssue(
                 Authorization: `Bearer ${token}`,
                 Accept: 'application/vnd.github.v3+json',
             },
+            timeout: GITHUB_CREATE_TIMEOUT_MS,
         }
     );
     return { number: response.data.number, html_url: response.data.html_url };
