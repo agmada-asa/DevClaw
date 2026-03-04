@@ -13,6 +13,7 @@ describe('Telegram Bot message formatting', () => {
         originalEnv = process.env;
         process.env.TELEGRAM_BOT_TOKEN = 'mock-token';
         process.env.GATEWAY_URL = 'http://test-gateway';
+        process.env.BOT_GATEWAY_TIMEOUT_MS = '60000';
         (axios.post as jest.Mock).mockResolvedValue({ status: 200 });
     });
 
@@ -51,18 +52,22 @@ describe('Telegram Bot message formatting', () => {
 
         await handleTextMessage(mockCtx);
 
-        expect(axios.post).toHaveBeenCalledWith('http://test-gateway', {
-            provider: 'telegram',
-            payload: {
-                chatId: 456,
-                userId: 789,
-                username: 'testuser',
-                text: '/task Please fix the bug',
-                messageId: 124,
-                timestamp: expect.any(String),
-                type: 'task'
-            }
-        });
+        expect(axios.post).toHaveBeenCalledWith(
+            'http://test-gateway',
+            {
+                provider: 'telegram',
+                payload: {
+                    chatId: 456,
+                    userId: 789,
+                    username: 'testuser',
+                    text: '/task Please fix the bug',
+                    messageId: 124,
+                    timestamp: expect.any(String),
+                    type: 'task'
+                }
+            },
+            expect.objectContaining({ timeout: 1200000 })
+        );
         expect(mockReply).toHaveBeenCalledWith('Task received and sent to gateway. Evaluating...');
     });
 
@@ -76,7 +81,11 @@ describe('Telegram Bot message formatting', () => {
 
         await handleTextMessage(mockCtx);
 
-        expect(axios.post).toHaveBeenCalledWith('http://test-gateway', expect.any(Object));
+        expect(axios.post).toHaveBeenCalledWith(
+            'http://test-gateway',
+            expect.any(Object),
+            expect.objectContaining({ timeout: 1200000 })
+        );
         expect(mockReply).toHaveBeenCalledWith('Task received and sent to gateway. Evaluating...');
     });
 });

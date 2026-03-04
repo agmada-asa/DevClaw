@@ -13,6 +13,7 @@ describe('WhatsApp Client message formatting', () => {
         mockGetContact = jest.fn().mockResolvedValue({ number: '1234567890', pushname: 'testuser' });
         originalEnv = process.env;
         process.env.GATEWAY_URL = 'http://test-gateway';
+        process.env.BOT_GATEWAY_TIMEOUT_MS = '60000';
         (axios.post as jest.Mock).mockResolvedValue({ status: 200 });
     });
 
@@ -60,7 +61,7 @@ describe('WhatsApp Client message formatting', () => {
         await handleMessage(mockMsg);
 
         expect(mockReply).toHaveBeenCalledWith(
-            'To submit a new request, please start your message with /request or /task followed by your task description. Use /repo <owner>/<repo> to link a GitHub repository.'
+            'Invalid command. Please use /help to see the list of available commands and the setup flow.'
         );
         expect(axios.post).not.toHaveBeenCalled();
     });
@@ -78,18 +79,22 @@ describe('WhatsApp Client message formatting', () => {
 
         await handleMessage(mockMsg);
 
-        expect(axios.post).toHaveBeenCalledWith('http://test-gateway', {
-            provider: 'whatsapp',
-            payload: {
-                chatId: '1234567890@c.us',
-                userId: '1234567890',
-                username: 'testuser',
-                text: '/task Please fix the bug',
-                messageId: 'msg123',
-                timestamp: expect.any(String),
-                type: 'task'
-            }
-        });
+        expect(axios.post).toHaveBeenCalledWith(
+            'http://test-gateway',
+            {
+                provider: 'whatsapp',
+                payload: {
+                    chatId: '1234567890@c.us',
+                    userId: '1234567890',
+                    username: 'testuser',
+                    text: '/task Please fix the bug',
+                    messageId: 'msg123',
+                    timestamp: expect.any(String),
+                    type: 'task'
+                }
+            },
+            expect.objectContaining({ timeout: 1200000 })
+        );
         expect(mockReply).toHaveBeenCalledWith('Task received and sent to gateway. Evaluating...');
     });
 
@@ -106,7 +111,11 @@ describe('WhatsApp Client message formatting', () => {
 
         await handleMessage(mockMsg);
 
-        expect(axios.post).toHaveBeenCalledWith('http://test-gateway', expect.any(Object));
+        expect(axios.post).toHaveBeenCalledWith(
+            'http://test-gateway',
+            expect.any(Object),
+            expect.objectContaining({ timeout: 1200000 })
+        );
         expect(mockReply).toHaveBeenCalledWith('Task received and sent to gateway. Evaluating...');
     });
 });
