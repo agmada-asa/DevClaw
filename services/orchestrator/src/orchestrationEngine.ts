@@ -2,6 +2,24 @@ import axios from 'axios';
 import { ArchitecturePlan, IntakeRequest } from '@devclaw/contracts';
 import { ExecutionSubTask } from './executionPreparation';
 
+const parsePositiveInt = (value: string | undefined, fallback: number): number => {
+    const parsed = Number.parseInt(value || '', 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const ORCHESTRATOR_PLAN_TIMEOUT_MS = parsePositiveInt(
+    process.env.ORCHESTRATOR_PLAN_TIMEOUT_MS,
+    20 * 60 * 1000
+);
+const ORCHESTRATOR_REFINE_TIMEOUT_MS = parsePositiveInt(
+    process.env.ORCHESTRATOR_REFINE_TIMEOUT_MS,
+    20 * 60 * 1000
+);
+const ORCHESTRATOR_EXECUTE_TIMEOUT_MS = parsePositiveInt(
+    process.env.ORCHESTRATOR_EXECUTE_TIMEOUT_MS,
+    4 * 60 * 60 * 1000
+);
+
 export interface PlanInput {
     intake: IntakeRequest;
     repoFullName: string;
@@ -77,6 +95,8 @@ class LegacyExecutionEngine {
             executionSubTasks: input.executionSubTasks,
             isolatedEnvironmentPath: input.isolatedEnvironmentPath,
             executionBranchName: input.executionBranchName,
+        }, {
+            timeout: ORCHESTRATOR_EXECUTE_TIMEOUT_MS,
         });
 
         return {
@@ -107,6 +127,8 @@ class OpenClawPlanningEngine {
             description: input.intake.message,
             issueNumber: input.issueNumber,
             source: 'orchestrator',
+        }, {
+            timeout: ORCHESTRATOR_PLAN_TIMEOUT_MS,
         });
         return planRes.data;
     }
@@ -119,6 +141,8 @@ class OpenClawPlanningEngine {
             changeRequest: input.changeRequest,
             repo: input.repoFullName,
             source: 'orchestrator',
+        }, {
+            timeout: ORCHESTRATOR_REFINE_TIMEOUT_MS,
         });
         return refineRes.data;
     }
@@ -150,6 +174,8 @@ class OpenClawExecutionEngine {
             isolatedEnvironmentPath: input.isolatedEnvironmentPath,
             executionBranchName: input.executionBranchName,
             source: 'orchestrator',
+        }, {
+            timeout: ORCHESTRATOR_EXECUTE_TIMEOUT_MS,
         });
 
         return {

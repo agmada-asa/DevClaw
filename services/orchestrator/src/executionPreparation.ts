@@ -160,9 +160,20 @@ const withGithubToken = (cloneUrl: string, githubToken?: string): string => {
 
 const redactSecrets = (value: string): string => value.replace(/(x-access-token:)[^@]+@/gi, '$1***@');
 
+const resolveGitTimeoutMs = (): number => {
+    const parsed = Number.parseInt(process.env.ORCHESTRATOR_GIT_TIMEOUT_MS || '', 10);
+    if (Number.isFinite(parsed) && parsed > 0) {
+        return parsed;
+    }
+    return 15 * 60 * 1000;
+};
+
 const runGit = async (args: string[], cwd?: string): Promise<void> => {
     try {
-        await execFileAsync('git', args, { cwd });
+        await execFileAsync('git', args, {
+            cwd,
+            timeout: resolveGitTimeoutMs(),
+        });
     } catch (err: any) {
         const stderr = typeof err?.stderr === 'string' ? err.stderr.trim() : '';
         const safeArgs = args.map(redactSecrets).join(' ');

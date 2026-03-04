@@ -20,6 +20,40 @@ const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 
+const parsePositiveInt = (value: string | undefined, fallback: number): number => {
+    const parsed = Number.parseInt(value || '', 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const GATEWAY_GITHUB_OAUTH_TIMEOUT_MS = parsePositiveInt(
+    process.env.GATEWAY_GITHUB_OAUTH_TIMEOUT_MS,
+    30_000
+);
+const GATEWAY_BOT_SEND_TIMEOUT_MS = parsePositiveInt(
+    process.env.GATEWAY_BOT_SEND_TIMEOUT_MS,
+    15_000
+);
+const GATEWAY_GITHUB_REPOS_TIMEOUT_MS = parsePositiveInt(
+    process.env.GATEWAY_GITHUB_REPOS_TIMEOUT_MS,
+    30_000
+);
+const GATEWAY_ORCHESTRATOR_TASK_TIMEOUT_MS = parsePositiveInt(
+    process.env.GATEWAY_ORCHESTRATOR_TASK_TIMEOUT_MS,
+    20 * 60 * 1000
+);
+const GATEWAY_ORCHESTRATOR_APPROVE_TIMEOUT_MS = parsePositiveInt(
+    process.env.GATEWAY_ORCHESTRATOR_APPROVE_TIMEOUT_MS,
+    4 * 60 * 60 * 1000
+);
+const GATEWAY_ORCHESTRATOR_REJECT_TIMEOUT_MS = parsePositiveInt(
+    process.env.GATEWAY_ORCHESTRATOR_REJECT_TIMEOUT_MS,
+    30_000
+);
+const GATEWAY_ORCHESTRATOR_REFINE_TIMEOUT_MS = parsePositiveInt(
+    process.env.GATEWAY_ORCHESTRATOR_REFINE_TIMEOUT_MS,
+    20 * 60 * 1000
+);
+
 // OAuth Init Endpoint
 app.get('/api/auth/github', (req: Request, res: Response): any => {
     const userId = req.query.userId as string;
@@ -72,7 +106,8 @@ app.get('/api/auth/github/callback', async (req: Request, res: Response): Promis
         }, {
             headers: {
                 Accept: 'application/json'
-            }
+            },
+            timeout: GATEWAY_GITHUB_OAUTH_TIMEOUT_MS,
         });
 
         const accessToken = tokenResponse.data.access_token;
@@ -106,7 +141,9 @@ app.get('/api/auth/github/callback', async (req: Request, res: Response): Promis
             }
 
             if (botUrl) {
-                axios.post(`${botUrl}/api/send`, { chatId, message: proactiveMessage })
+                axios.post(`${botUrl}/api/send`, { chatId, message: proactiveMessage }, {
+                    timeout: GATEWAY_BOT_SEND_TIMEOUT_MS,
+                })
                     .then(() => console.log(`[Gateway] Sent login confirmation to ${provider} chat ${chatId}`))
                     .catch((err) => console.error(`[Gateway] Failed to send login confirmation to ${provider}:`, err.message));
             } else {
@@ -224,7 +261,8 @@ app.post('/api/ingress/message', async (req: Request, res: Response): Promise<an
                 headers: {
                     'Authorization': `Bearer ${data.github_token}`,
                     'Accept': 'application/vnd.github.v3+json'
-                }
+                },
+                timeout: GATEWAY_GITHUB_REPOS_TIMEOUT_MS,
             });
 
             const repos = response.data;
@@ -251,7 +289,12 @@ app.post('/api/ingress/message', async (req: Request, res: Response): Promise<an
         const orchestratorUrl = process.env.ORCHESTRATOR_URL || 'http://localhost:3010';
         try {
             console.log(`[Gateway] Dispatching ${payload.type} for plan ${planId}`);
-            const orchResponse = await axios.post(`${orchestratorUrl}/api/${payload.type}`, { planId });
+            const timeoutMs = payload.type === 'approve'
+                ? GATEWAY_ORCHESTRATOR_APPROVE_TIMEOUT_MS
+                : GATEWAY_ORCHESTRATOR_REJECT_TIMEOUT_MS;
+            const orchResponse = await axios.post(`${orchestratorUrl}/api/${payload.type}`, { planId }, {
+                timeout: timeoutMs,
+            });
             return res.status(200).json(orchResponse.data);
         } catch (err: any) {
             const detail = err.response?.data?.error || err.message;
@@ -281,7 +324,7 @@ app.post('/api/ingress/message', async (req: Request, res: Response): Promise<an
                 channel: provider,
                 chatId: payload.chatId ? payload.chatId.toString() : ''
             }, {
-                timeout: 30000,
+                timeout: GATEWAY_ORCHESTRATOR_REFINE_TIMEOUT_MS,
             });
             return res.status(200).json(orchResponse.data);
         } catch (err: any) {
@@ -359,7 +402,7 @@ app.post('/api/ingress/message', async (req: Request, res: Response): Promise<an
         try {
             console.log(`[Gateway] Dispatching task to orchestrator for repo ${userPrefs.github_repo}`);
             const orchResponse = await axios.post(`${orchestratorUrl}/api/task`, intakePayload, {
-                timeout: 15000, // 15s — orchestrator may do a GitHub API round-trip
+                timeout: GATEWAY_ORCHESTRATOR_TASK_TIMEOUT_MS,
             });
             return res.status(200).json(orchResponse.data);
         } catch (err: any) {
