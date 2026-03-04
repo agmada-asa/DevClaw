@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@devclaw/contracts": "*",
+    "@devclaw/llm-router": "*",
     "axios": "^1.13.6",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
