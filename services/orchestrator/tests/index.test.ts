@@ -242,6 +242,9 @@ describe('Orchestrator API', () => {
                         agent: 'Frontend',
                     }),
                 ]),
+            }),
+            expect.objectContaining({
+                timeout: expect.any(Number),
             })
         );
     });
