@@ -25,44 +25,72 @@ export interface ModelConfig {
   policy: RolePolicy;
 }
 
+const DEEPSEEK_V32_MODEL = process.env.FLOCK_DEEPSEEK_V32_MODEL || 'deepseek-v3.2';
+const ZAI_REVIEWER_MODEL = process.env.ZAI_GLM_REVIEWER_MODEL || 'glm-4.7-flash';
+
+const GENERATOR_POLICY: RolePolicy = {
+  timeoutMs: 1200_000,
+  maxRetries: 1,
+  fallbackOn: ['timeout', 'http5xx', 'http429'],
+};
+
+const REVIEWER_POLICY: RolePolicy = {
+  timeoutMs: 600_000,
+  maxRetries: 2,
+  fallbackOn: ['timeout', 'http5xx', 'http429'],
+};
+
 // This is the single source of truth for which model handles which job.
 // To swap a model, provider, or policy for a role, change it here.
 export const MODEL_CONFIG: Record<ModelRole, ModelConfig> = {
-  // Writes the actual code changes. Venice.ai is the fallback because it
-  // explicitly does not log codebase content — important for customer IP.
-  // One retry before Venice because FLock can have transient spikes.
+  // Legacy generator route, aligned with paired frontend/backend generators.
   generator: {
     provider: 'flock',
-    modelId: 'Qwen/Qwen2.5-Coder-32B-Instruct',
-    fallback: {
-      provider: 'venice',
-      modelId: 'qwen-2.5-coder-32b',
-    },
-    policy: {
-      timeoutMs: 30_000,
-      maxRetries: 1,
-      fallbackOn: ['timeout', 'http5xx', 'http429'],
-    },
+    modelId: DEEPSEEK_V32_MODEL,
+    policy: GENERATOR_POLICY,
   },
 
-  // Reviews the generated code. No fallback, but two retries so a transient
-  // hiccup doesn't force the generator to loop unnecessarily.
+  // Legacy reviewer route, aligned with paired frontend/backend reviewers.
   reviewer: {
+    provider: 'zai',
+    modelId: ZAI_REVIEWER_MODEL,
+    policy: REVIEWER_POLICY,
+  },
+
+  // Frontend generator is pinned to FLock DeepSeek V3.2.
+  frontend_generator: {
     provider: 'flock',
-    modelId: 'deepseek-ai/DeepSeek-R1',
-    policy: {
-      timeoutMs: 30_000,
-      maxRetries: 2,
-      fallbackOn: ['timeout', 'http5xx'],
-    },
+    modelId: DEEPSEEK_V32_MODEL,
+    policy: GENERATOR_POLICY,
+  },
+
+  // Frontend reviewer is pinned to Z.AI GLM.
+  frontend_reviewer: {
+    provider: 'zai',
+    modelId: ZAI_REVIEWER_MODEL,
+    policy: REVIEWER_POLICY,
+  },
+
+  // Backend generator is pinned to FLock DeepSeek V3.2.
+  backend_generator: {
+    provider: 'flock',
+    modelId: DEEPSEEK_V32_MODEL,
+    policy: GENERATOR_POLICY,
+  },
+
+  // Backend reviewer is pinned to Z.AI GLM.
+  backend_reviewer: {
+    provider: 'zai',
+    modelId: ZAI_REVIEWER_MODEL,
+    policy: REVIEWER_POLICY,
   },
 
   // Coordinates workflow — needs faster responses, one retry is enough.
   orchestrator: {
     provider: 'flock',
-    modelId: 'meta-llama/Llama-3.3-70B-Instruct',
+    modelId: 'deepseek-v3.2',
     policy: {
-      timeoutMs: 15_000,
+      timeoutMs: 600_000,
       maxRetries: 1,
       fallbackOn: ['timeout', 'http5xx'],
     },
@@ -71,9 +99,9 @@ export const MODEL_CONFIG: Record<ModelRole, ModelConfig> = {
   // Produces the architecture plan on Z.AI. One retry before giving up.
   planner: {
     provider: 'zai',
-    modelId: 'glm-4',
+    modelId: 'glm-4.7-flash',
     policy: {
-      timeoutMs: 20_000,
+      timeoutMs: 600_000,
       maxRetries: 1,
       fallbackOn: ['timeout', 'http5xx'],
     },
