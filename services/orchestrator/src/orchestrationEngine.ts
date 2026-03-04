@@ -52,6 +52,9 @@ export interface ExecuteResult {
     dispatched: boolean;
     engine: 'legacy' | 'openclaw';
     runRef?: string;
+    approvedPatchSet?: unknown;
+    branchPush?: unknown;
+    agentLoop?: unknown;
 }
 
 /**
@@ -103,6 +106,9 @@ class LegacyExecutionEngine {
             dispatched: true,
             engine: 'legacy',
             runRef: execRes.data?.runRef || input.runId,
+            approvedPatchSet: execRes.data?.approvedPatchSet,
+            branchPush: execRes.data?.branchPush,
+            agentLoop: execRes.data?.agentLoop,
         };
     }
 }
@@ -182,6 +188,9 @@ class OpenClawExecutionEngine {
             dispatched: true,
             engine: 'openclaw',
             runRef: execRes.data?.runRef || input.runId,
+            approvedPatchSet: execRes.data?.approvedPatchSet,
+            branchPush: execRes.data?.branchPush,
+            agentLoop: execRes.data?.agentLoop,
         };
     }
 }

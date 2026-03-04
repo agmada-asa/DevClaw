@@ -333,6 +333,9 @@ app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
         success: true,
         message: 'Task approved and dispatched for execution',
         task: updated,
+        execution: {
+            status: 'queued',
+        },
     });
 
     // Run execution asynchronously to prevent gateway timeouts
@@ -408,6 +411,20 @@ app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
                 executionBranchName: isolatedEnvironment.branchName,
             });
 
+            if (execution.approvedPatchSet) {
+                const patchSetRef = (execution.approvedPatchSet as any)?.patchSetRef || 'n/a';
+                console.log(
+                    `[Orchestrator] Received approved patch set for run ${updated.id}: ${patchSetRef}`
+                );
+            }
+            if (execution.branchPush) {
+                const branchName = (execution.branchPush as any)?.branchName || 'n/a';
+                const pushed = (execution.branchPush as any)?.pushed;
+                console.log(
+                    `[Orchestrator] Execution branch status for run ${updated.id}: ` +
+                    `branch=${branchName} pushed=${String(pushed)}`
+                );
+            }
             console.log(`[Orchestrator] Task ${updated.id} execution completed asynchronously.`);
         } catch (err: any) {
             console.error('[Orchestrator] Failed to dispatch approved task for execution:', formatErrorDetails(err));

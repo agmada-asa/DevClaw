@@ -63,7 +63,16 @@ app.post('/api/execute', async (req: Request, res: Response): Promise<any> => {
     }
 
     try {
+        console.log(
+            `[AgentRunner] Starting execution runId=${runId} ` +
+            `subTasks=${Array.isArray(payload.executionSubTasks) ? payload.executionSubTasks.length : 0} ` +
+            `workspace=${payload.isolatedEnvironmentPath || 'n/a'}`
+        );
         const dispatch = await executionCoordinator.execute(payload);
+        console.log(
+            `[AgentRunner] Execution completed runId=${runId} engine=${dispatch.engine} ` +
+            `patchSetRef=${dispatch.approvedPatchSet?.patchSetRef || 'n/a'}`
+        );
         return res.status(202).json({
             success: true,
             status: 'dispatched',
@@ -77,6 +86,16 @@ app.post('/api/execute', async (req: Request, res: Response): Promise<any> => {
                         approvedSubTasks: dispatch.agentLoopReport.approvedSubTasks,
                         rewriteRequiredSubTasks: dispatch.agentLoopReport.rewriteRequiredSubTasks,
                     },
+                }
+                : {}),
+            ...(dispatch.approvedPatchSet
+                ? {
+                    approvedPatchSet: dispatch.approvedPatchSet,
+                }
+                : {}),
+            ...(dispatch.branchPush
+                ? {
+                    branchPush: dispatch.branchPush,
                 }
                 : {}),
         });
