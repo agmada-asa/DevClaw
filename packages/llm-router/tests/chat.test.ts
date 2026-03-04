@@ -4,13 +4,6 @@ import axios from 'axios';
 jest.mock('axios');
 const mockPost = axios.post as jest.MockedFunction<typeof axios.post>;
 
-// jest.mock('axios') stubs out ALL exports including isAxiosError, so it
-// returns undefined for every call. Restore the real implementation so the
-// error-classification logic in index.ts works correctly in tests.
-(axios.isAxiosError as unknown as jest.Mock).mockImplementation(
-  (err: unknown) => (err as any)?.isAxiosError === true,
-);
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const MOCK_SUCCESS = {
@@ -47,10 +40,37 @@ function makeAxiosNetworkError() {
   return err;
 }
 
+// Queues the same rejection N times so tests can cover all retry attempts.
+// Each role has a maxRetries value — you need (1 + maxRetries) rejections to
+// exhaust all primary attempts and reach the fallback or final throw.
+//
+// Current policy values:
+//   reviewer    maxRetries: 2  →  3 rejections to exhaust
+//   generator   maxRetries: 1  →  2 rejections to exhaust
+//   orchestrator maxRetries: 1 →  2 rejections to exhaust
+//   planner     maxRetries: 1  →  2 rejections to exhaust
+//
+// Only errors listed in the role's fallbackOn trigger retries.
+// Permanent errors (401, generic RouterError) break out on the first attempt.
+function mockRejectN(err: unknown, n: number): void {
+  for (let i = 0; i < n; i++) mockPost.mockRejectedValueOnce(err);
+}
+
 // ─── Setup ───────────────────────────────────────────────────────────────────
 
 beforeEach(() => {
-  jest.clearAllMocks();
+  // resetAllMocks clears both queued return values AND implementations.
+  // We need it (not clearAllMocks) so leftover mockResolvedValueOnce queues
+  // from a failed test don't bleed into the next test.
+  jest.resetAllMocks();
+
+  // Restore isAxiosError since resetAllMocks wiped its implementation.
+  // jest.mock('axios') stubs it as a dead function that returns undefined,
+  // so we need to give it the real check manually.
+  (axios.isAxiosError as unknown as jest.Mock).mockImplementation(
+    (err: unknown) => (err as any)?.isAxiosError === true,
+  );
+
   process.env.FLOCK_API_KEY  = 'test-flock-key';
   process.env.VENICE_API_KEY = 'test-venice-key';
   process.env.ZAI_API_KEY    = 'test-zai-key';
@@ -195,7 +215,6 @@ describe('response shape', () => {
   it('returns undefined tokensUsed when provider omits usage field', async () => {
     mockPost.mockResolvedValueOnce({
       data: { choices: [{ message: { content: 'reply' } }] },
-      // no usage field
     });
 
     const result = await chat({
@@ -262,15 +281,20 @@ describe('response shape', () => {
 
 describe('typed errors', () => {
   describe('ProviderHttpError', () => {
-    it('is thrown on a 401 response', async () => {
+    it('is thrown on a 401 response (no retry — 401 not in fallbackOn)', async () => {
+      // 401 is not in reviewer's fallbackOn ['timeout','http5xx'], so it
+      // breaks out immediately with 1 attempt.
       mockPost.mockRejectedValueOnce(makeAxiosHttpError(401, { error: 'Unauthorized' }));
 
       await expect(
         chat({ role: 'reviewer', messages: [{ role: 'user', content: 'Review' }] }),
       ).rejects.toThrow(ProviderHttpError);
+
+      expect(mockPost).toHaveBeenCalledTimes(1);
     });
 
-    it('is thrown on a 429 rate-limit response', async () => {
+    it('is thrown on a 429 rate-limit response (no retry for reviewer — 429 not in its fallbackOn)', async () => {
+      // reviewer's fallbackOn is ['timeout','http5xx'] — no http429 entry.
       mockPost.mockRejectedValueOnce(makeAxiosHttpError(429, { error: 'Rate limit exceeded' }));
 
       const err = await chat({
@@ -280,10 +304,12 @@ describe('typed errors', () => {
 
       expect(err).toBeInstanceOf(ProviderHttpError);
       expect(err.statusCode).toBe(429);
+      expect(mockPost).toHaveBeenCalledTimes(1);
     });
 
-    it('is thrown on a 500 internal server error', async () => {
-      mockPost.mockRejectedValueOnce(makeAxiosHttpError(500, { error: 'Server error' }));
+    it('is thrown on a 500 after exhausting all retries (reviewer maxRetries: 2 → 3 attempts)', async () => {
+      // 500 IS in reviewer's fallbackOn (http5xx), so it retries twice first.
+      mockRejectN(makeAxiosHttpError(500, { error: 'Server error' }), 3);
 
       const err = await chat({
         role: 'reviewer',
@@ -292,10 +318,11 @@ describe('typed errors', () => {
 
       expect(err).toBeInstanceOf(ProviderHttpError);
       expect(err.statusCode).toBe(500);
+      expect(mockPost).toHaveBeenCalledTimes(3);
     });
 
-    it('is thrown on a 503 service-unavailable response', async () => {
-      mockPost.mockRejectedValueOnce(makeAxiosHttpError(503));
+    it('is thrown on a 503 after exhausting all retries (planner maxRetries: 1 → 2 attempts)', async () => {
+      mockRejectN(makeAxiosHttpError(503), 2);
 
       const err = await chat({
         role: 'planner',
@@ -304,10 +331,11 @@ describe('typed errors', () => {
 
       expect(err).toBeInstanceOf(ProviderHttpError);
       expect(err.statusCode).toBe(503);
+      expect(mockPost).toHaveBeenCalledTimes(2);
     });
 
     it('carries role, provider, and model on the error', async () => {
-      mockPost.mockRejectedValueOnce(makeAxiosHttpError(500));
+      mockRejectN(makeAxiosHttpError(500), 3); // reviewer exhausts 3 attempts
 
       const err = await chat({
         role: 'reviewer',
@@ -320,7 +348,7 @@ describe('typed errors', () => {
       expect(err.model.length).toBeGreaterThan(0);
     });
 
-    it('carries the response body from the provider', async () => {
+    it('carries the response body from the provider (no retry — 400 not in fallbackOn)', async () => {
       const body = { error: { message: 'context too long', code: 'context_length_exceeded' } };
       mockPost.mockRejectedValueOnce(makeAxiosHttpError(400, body));
 
@@ -330,10 +358,11 @@ describe('typed errors', () => {
       }).catch((e) => e);
 
       expect(err.responseBody).toEqual(body);
+      expect(mockPost).toHaveBeenCalledTimes(1);
     });
 
     it('is also an instance of RouterError and Error', async () => {
-      mockPost.mockRejectedValueOnce(makeAxiosHttpError(500));
+      mockRejectN(makeAxiosHttpError(500), 3);
 
       const err = await chat({
         role: 'reviewer',
@@ -347,8 +376,9 @@ describe('typed errors', () => {
   });
 
   describe('ProviderTimeoutError', () => {
-    it('is thrown on ECONNABORTED (axios timeout)', async () => {
-      mockPost.mockRejectedValueOnce(makeAxiosTimeoutError('ECONNABORTED'));
+    it('is thrown on ECONNABORTED after exhausting retries (reviewer maxRetries: 2 → 3 attempts)', async () => {
+      // timeout IS in reviewer's fallbackOn, so it retries twice first.
+      mockRejectN(makeAxiosTimeoutError('ECONNABORTED'), 3);
 
       const err = await chat({
         role: 'reviewer',
@@ -357,10 +387,11 @@ describe('typed errors', () => {
 
       expect(err).toBeInstanceOf(ProviderTimeoutError);
       expect(err.name).toBe('ProviderTimeoutError');
+      expect(mockPost).toHaveBeenCalledTimes(3);
     });
 
-    it('is thrown on ERR_CANCELED (AbortController signal)', async () => {
-      mockPost.mockRejectedValueOnce(makeAxiosTimeoutError('ERR_CANCELED'));
+    it('is thrown on ERR_CANCELED after exhausting retries', async () => {
+      mockRejectN(makeAxiosTimeoutError('ERR_CANCELED'), 3);
 
       const err = await chat({
         role: 'reviewer',
@@ -370,8 +401,8 @@ describe('typed errors', () => {
       expect(err).toBeInstanceOf(ProviderTimeoutError);
     });
 
-    it('carries role, provider, and model on the error', async () => {
-      mockPost.mockRejectedValueOnce(makeAxiosTimeoutError());
+    it('carries role, provider, and model on the error (planner maxRetries: 1 → 2 attempts)', async () => {
+      mockRejectN(makeAxiosTimeoutError(), 2);
 
       const err = await chat({
         role: 'planner',
@@ -381,10 +412,11 @@ describe('typed errors', () => {
       expect(err.role).toBe('planner');
       expect(err.provider).toBe('zai');
       expect(typeof err.model).toBe('string');
+      expect(mockPost).toHaveBeenCalledTimes(2);
     });
 
     it('is also an instance of RouterError and Error', async () => {
-      mockPost.mockRejectedValueOnce(makeAxiosTimeoutError());
+      mockRejectN(makeAxiosTimeoutError(), 3);
 
       const err = await chat({
         role: 'reviewer',
@@ -397,8 +429,8 @@ describe('typed errors', () => {
   });
 
   describe('RouterError (generic fallthrough)', () => {
-    it('wraps a plain non-axios Error', async () => {
-      // This simulates something like JSON parse failure inside the provider.
+    it('wraps a plain non-axios Error (no retry — not in fallbackOn)', async () => {
+      // Generic errors are not in any fallbackOn list, so no retries.
       mockPost.mockRejectedValueOnce(new Error('unexpected token in JSON'));
 
       const err = await chat({
@@ -409,9 +441,11 @@ describe('typed errors', () => {
       expect(err).toBeInstanceOf(RouterError);
       expect(err.message).toContain('unexpected token');
       expect(err.name).toBe('RouterError');
+      expect(mockPost).toHaveBeenCalledTimes(1);
     });
 
-    it('wraps an axios network error with no response (e.g. DNS failure)', async () => {
+    it('wraps an axios network error with no response (no retry — not in fallbackOn)', async () => {
+      // Network error has no response → RouterError → not in fallbackOn → no retry.
       mockPost.mockRejectedValueOnce(makeAxiosNetworkError());
 
       const err = await chat({
@@ -419,9 +453,8 @@ describe('typed errors', () => {
         messages: [{ role: 'user', content: 'Review' }],
       }).catch((e) => e);
 
-      // No response means it's not an HTTP error, not a timeout —
-      // should fall through to the base RouterError.
       expect(err).toBeInstanceOf(RouterError);
+      expect(mockPost).toHaveBeenCalledTimes(1);
     });
   });
 });
@@ -430,7 +463,8 @@ describe('typed errors', () => {
 
 describe('requestId propagation', () => {
   it('includes requestId on ProviderHttpError when provided', async () => {
-    mockPost.mockRejectedValueOnce(makeAxiosHttpError(500));
+    // reviewer + 500: retries twice before giving up (maxRetries: 2 → 3 total)
+    mockRejectN(makeAxiosHttpError(500), 3);
 
     const err = await chat({
       role: 'reviewer',
@@ -442,7 +476,7 @@ describe('requestId propagation', () => {
   });
 
   it('includes requestId on ProviderTimeoutError when provided', async () => {
-    mockPost.mockRejectedValueOnce(makeAxiosTimeoutError());
+    mockRejectN(makeAxiosTimeoutError(), 3);
 
     const err = await chat({
       role: 'reviewer',
@@ -454,38 +488,22 @@ describe('requestId propagation', () => {
   });
 
   it('leaves requestId undefined on errors when not provided', async () => {
-    mockPost.mockRejectedValueOnce(makeAxiosHttpError(500));
+    mockRejectN(makeAxiosHttpError(500), 3);
 
     const err = await chat({
       role: 'reviewer',
       messages: [{ role: 'user', content: 'Review' }],
-      // no requestId
     }).catch((e) => e);
 
     expect(err.requestId).toBeUndefined();
   });
 });
 
-// ─── Fallback Behaviour ───────────────────────────────────────────────────────
+// ─── Retry Behaviour ─────────────────────────────────────────────────────────
 
-describe('fallback behaviour', () => {
-  it('falls back to Venice when FLock returns a generic error', async () => {
-    mockPost
-      .mockRejectedValueOnce(new Error('FLock down'))
-      .mockResolvedValueOnce(MOCK_SUCCESS);
-
-    const result = await chat({
-      role: 'generator',
-      messages: [{ role: 'user', content: 'Fix bug' }],
-    });
-
-    expect(mockPost).toHaveBeenCalledTimes(2);
-    const [fallbackUrl] = mockPost.mock.calls[1];
-    expect(fallbackUrl).toContain('venice');
-    expect(result.provider).toBe('venice');
-  });
-
-  it('falls back to Venice when FLock returns an HTTP error', async () => {
+describe('retry behaviour', () => {
+  it('retries the primary provider before falling back (generator maxRetries: 1)', async () => {
+    // Attempt 1: fails, retry attempt 2: succeeds — no fallback needed.
     mockPost
       .mockRejectedValueOnce(makeAxiosHttpError(503))
       .mockResolvedValueOnce(MOCK_SUCCESS);
@@ -495,13 +513,90 @@ describe('fallback behaviour', () => {
       messages: [{ role: 'user', content: 'Fix bug' }],
     });
 
+    // Both calls went to FLock (retry), not Venice (fallback).
+    expect(mockPost).toHaveBeenCalledTimes(2);
+    const [url1] = mockPost.mock.calls[0];
+    const [url2] = mockPost.mock.calls[1];
+    expect(url1).toContain('flock');
+    expect(url2).toContain('flock');
+    expect(result.provider).toBe('flock');
+  });
+
+  it('does NOT retry on permanent errors (401)', async () => {
+    mockPost.mockRejectedValueOnce(makeAxiosHttpError(401));
+
+    const err = await chat({
+      role: 'generator',
+      messages: [{ role: 'user', content: 'Fix bug' }],
+    }).catch((e) => e);
+
+    expect(mockPost).toHaveBeenCalledTimes(1);
+    expect(err).toBeInstanceOf(ProviderHttpError);
+    expect(err.statusCode).toBe(401);
+  });
+
+  it('retries reviewer up to maxRetries (2) times before throwing', async () => {
+    mockRejectN(makeAxiosHttpError(503), 3);
+
+    await chat({
+      role: 'reviewer',
+      messages: [{ role: 'user', content: 'Review' }],
+    }).catch(() => {});
+
+    expect(mockPost).toHaveBeenCalledTimes(3);
+  });
+
+  it('succeeds on a later retry without ever hitting the fallback', async () => {
+    mockPost
+      .mockRejectedValueOnce(makeAxiosHttpError(503))  // retry 1 fails
+      .mockRejectedValueOnce(makeAxiosHttpError(503))  // retry 2 fails
+      .mockResolvedValueOnce(MOCK_SUCCESS);             // retry 3 succeeds
+
+    const result = await chat({
+      role: 'reviewer', // maxRetries: 2 → up to 3 attempts
+      messages: [{ role: 'user', content: 'Review' }],
+    });
+
+    expect(mockPost).toHaveBeenCalledTimes(3);
+    expect(result.provider).toBe('flock'); // stayed on primary provider
+  });
+});
+
+// ─── Fallback Behaviour ───────────────────────────────────────────────────────
+
+describe('fallback behaviour', () => {
+  // generator: maxRetries: 1 → 2 primary attempts before fallback.
+
+  it('falls back to Venice after exhausting primary retries on 503', async () => {
+    mockRejectN(makeAxiosHttpError(503), 2); // exhaust 2 primary attempts
+    mockPost.mockResolvedValueOnce(MOCK_SUCCESS); // Venice succeeds
+
+    const result = await chat({
+      role: 'generator',
+      messages: [{ role: 'user', content: 'Fix bug' }],
+    });
+
+    expect(mockPost).toHaveBeenCalledTimes(3);
+    const [fallbackUrl] = mockPost.mock.calls[2]; // 3rd call = Venice
+    expect(fallbackUrl).toContain('venice');
     expect(result.provider).toBe('venice');
   });
 
-  it('falls back to Venice when FLock times out', async () => {
-    mockPost
-      .mockRejectedValueOnce(makeAxiosTimeoutError())
-      .mockResolvedValueOnce(MOCK_SUCCESS);
+  it('does NOT fall back on a plain RouterError (not in fallbackOn)', async () => {
+    mockPost.mockRejectedValueOnce(new Error('unexpected token'));
+
+    const err = await chat({
+      role: 'generator',
+      messages: [{ role: 'user', content: 'Fix bug' }],
+    }).catch((e) => e);
+
+    expect(mockPost).toHaveBeenCalledTimes(1);
+    expect(err).toBeInstanceOf(RouterError);
+  });
+
+  it('falls back to Venice after exhausting primary retries on HTTP error', async () => {
+    mockRejectN(makeAxiosHttpError(503), 2);
+    mockPost.mockResolvedValueOnce(MOCK_SUCCESS);
 
     const result = await chat({
       role: 'generator',
@@ -511,41 +606,53 @@ describe('fallback behaviour', () => {
     expect(result.provider).toBe('venice');
   });
 
-  it('throws the fallback error when both primary and fallback fail', async () => {
-    mockPost
-      .mockRejectedValueOnce(new Error('FLock down'))
-      .mockRejectedValueOnce(makeAxiosHttpError(503));
+  it('falls back to Venice after exhausting primary retries on timeout', async () => {
+    mockRejectN(makeAxiosTimeoutError(), 2);
+    mockPost.mockResolvedValueOnce(MOCK_SUCCESS);
+
+    const result = await chat({
+      role: 'generator',
+      messages: [{ role: 'user', content: 'Fix bug' }],
+    });
+
+    expect(result.provider).toBe('venice');
+  });
+
+  it('throws the fallback error when both primary retries and fallback all fail', async () => {
+    mockRejectN(makeAxiosHttpError(503), 2);          // exhausts primary
+    mockPost.mockRejectedValueOnce(makeAxiosHttpError(503)); // fallback also fails
 
     const err = await chat({
       role: 'generator',
       messages: [{ role: 'user', content: 'Fix bug' }],
     }).catch((e) => e);
 
-    // The error that surfaces should be from the Venice fallback call.
+    expect(mockPost).toHaveBeenCalledTimes(3);
     expect(err).toBeInstanceOf(ProviderHttpError);
     expect(err.provider).toBe('venice');
     expect(err.statusCode).toBe(503);
   });
 
-  it('does not attempt fallback for reviewer (no fallback configured)', async () => {
-    mockPost.mockRejectedValueOnce(makeAxiosHttpError(503));
+  it('does not attempt fallback for reviewer — exhausts retries then throws', async () => {
+    // reviewer has no fallback config. It retries maxRetries:2 times then throws.
+    mockRejectN(makeAxiosHttpError(503), 3);
 
     await expect(
       chat({ role: 'reviewer', messages: [{ role: 'user', content: 'Review' }] }),
     ).rejects.toBeInstanceOf(ProviderHttpError);
 
-    // Only one call — no fallback attempted.
-    expect(mockPost).toHaveBeenCalledTimes(1);
+    expect(mockPost).toHaveBeenCalledTimes(3);
   });
 
-  it('does not attempt fallback for planner (no fallback configured)', async () => {
-    mockPost.mockRejectedValueOnce(makeAxiosHttpError(500));
+  it('does not attempt fallback for planner — exhausts retries then throws', async () => {
+    // planner has no fallback config. maxRetries:1 → 2 total attempts.
+    mockRejectN(makeAxiosHttpError(500), 2);
 
     await expect(
       chat({ role: 'planner', messages: [{ role: 'user', content: 'Plan' }] }),
     ).rejects.toBeInstanceOf(ProviderHttpError);
 
-    expect(mockPost).toHaveBeenCalledTimes(1);
+    expect(mockPost).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -568,11 +675,12 @@ describe('environment variable edge cases', () => {
     ).rejects.toThrow('ZAI_API_KEY is not set');
   });
 
-  it('throws when VENICE_API_KEY is missing and fallback is triggered', async () => {
+  it('throws when VENICE_API_KEY is missing after fallback is triggered', async () => {
     delete process.env.VENICE_API_KEY;
-    mockPost.mockRejectedValueOnce(new Error('FLock down'));
+    // Exhaust generator's 2 primary attempts (503 in fallbackOn), then
+    // the fallback call to Venice throws missing key error.
+    mockRejectN(makeAxiosHttpError(503), 2);
 
-    // FLock fails → tries Venice fallback → Venice throws missing key error.
     await expect(
       chat({ role: 'generator', messages: [{ role: 'user', content: 'Fix' }] }),
     ).rejects.toThrow('VENICE_API_KEY is not set');
@@ -603,8 +711,6 @@ describe('unknown and borderline inputs', () => {
   it('passes an empty messages array to the provider without throwing', async () => {
     mockPost.mockResolvedValueOnce(MOCK_SUCCESS);
 
-    // llm-router itself does not validate messages — that's the provider's job.
-    // It should pass through and let the provider respond (or error) naturally.
     await expect(
       chat({ role: 'generator', messages: [] }),
     ).resolves.toBeDefined();
@@ -618,16 +724,15 @@ describe('unknown and borderline inputs', () => {
 
 describe('concurrent calls', () => {
   it('handles multiple simultaneous calls independently', async () => {
-    // Three calls in parallel — each gets its own resolved value.
     mockPost
       .mockResolvedValueOnce({ data: { choices: [{ message: { content: 'reply-1' } }], usage: { total_tokens: 1 } } })
       .mockResolvedValueOnce({ data: { choices: [{ message: { content: 'reply-2' } }], usage: { total_tokens: 2 } } })
       .mockResolvedValueOnce({ data: { choices: [{ message: { content: 'reply-3' } }], usage: { total_tokens: 3 } } });
 
     const [r1, r2, r3] = await Promise.all([
-      chat({ role: 'generator',   messages: [{ role: 'user', content: 'A' }], requestId: 'req-1' }),
-      chat({ role: 'reviewer',    messages: [{ role: 'user', content: 'B' }], requestId: 'req-2' }),
-      chat({ role: 'orchestrator',messages: [{ role: 'user', content: 'C' }], requestId: 'req-3' }),
+      chat({ role: 'generator',    messages: [{ role: 'user', content: 'A' }], requestId: 'req-1' }),
+      chat({ role: 'reviewer',     messages: [{ role: 'user', content: 'B' }], requestId: 'req-2' }),
+      chat({ role: 'orchestrator', messages: [{ role: 'user', content: 'C' }], requestId: 'req-3' }),
     ]);
 
     expect(r1.content).toBe('reply-1');
@@ -637,13 +742,15 @@ describe('concurrent calls', () => {
   });
 
   it('isolates failures — one failing call does not affect others', async () => {
+    // Use 401 for reviewer so it fails immediately with no retries
+    // (401 is not in reviewer's fallbackOn), keeping the mock queue simple.
     mockPost
-      .mockRejectedValueOnce(makeAxiosHttpError(500))
-      .mockResolvedValueOnce(MOCK_SUCCESS);
+      .mockRejectedValueOnce(makeAxiosHttpError(401)) // reviewer fails, no retry
+      .mockResolvedValueOnce(MOCK_SUCCESS);            // planner succeeds
 
     const [err, result] = await Promise.allSettled([
-      chat({ role: 'reviewer',  messages: [{ role: 'user', content: 'Review' }] }),
-      chat({ role: 'planner',   messages: [{ role: 'user', content: 'Plan' }] }),
+      chat({ role: 'reviewer', messages: [{ role: 'user', content: 'Review' }] }),
+      chat({ role: 'planner',  messages: [{ role: 'user', content: 'Plan' }] }),
     ]);
 
     expect(err.status).toBe('rejected');
