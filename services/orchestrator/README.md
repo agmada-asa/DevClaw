@@ -16,3 +16,16 @@ The orchestrator routes requests to specific engines based on configuration:
 
 * Legacy Execution Engine: `AGENT_RUNNER_URL` (default `http://localhost:3030`)
 * OpenClaw Engine (Planning & Execution): `OPENCLAW_ENGINE_URL` (default `http://localhost:3040`)
+
+## Timeout Configuration
+The orchestrator now uses explicit timeouts across GitHub, planning, execution dispatch, and bot notifications.
+
+- `ORCHESTRATOR_GITHUB_SEARCH_TIMEOUT_MS` (default `20000`)
+- `ORCHESTRATOR_GITHUB_CREATE_TIMEOUT_MS` (default `30000`)
+- `ORCHESTRATOR_PLAN_TIMEOUT_MS` (default `1200000`)
+- `ORCHESTRATOR_REFINE_TIMEOUT_MS` (default `1200000`)
+- `ORCHESTRATOR_EXECUTE_TIMEOUT_MS` (default `14400000`)
+- `ORCHESTRATOR_GIT_TIMEOUT_MS` (default `900000`)
+- `ORCHESTRATOR_BOT_SEND_TIMEOUT_MS` (default `20000`)
+
+When a plan is approved, orchestrator sends a proactive bot message that execution has started.

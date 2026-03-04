@@ -13,12 +13,22 @@ It receives tasks routed by the Orchestrator and leverages the local OpenClaw CL
 - `POST /api/plan`: Create a new plan from a task description
 - `GET /api/plan/:planId`: Retrieve an existing plan by ID
 - `POST /api/plan/:planId/update`: Modify a plan with a new change request
-- `POST /api/execute`: (Currently returns `501 Not Implemented`; reserved for future OpenClaw native execution)
+- `POST /api/execute`: Dispatch execution via `agent-runner` and return run dispatch metadata
+
+### Execution Dispatch Configuration
+- `OPENCLAW_AGENT_RUNNER_URL` (default: `http://localhost:3030`)
+- `OPENCLAW_AGENT_RUNNER_EXECUTE_PATH` (default: `/api/execute`)
+- `OPENCLAW_EXECUTION_DISPATCH_TIMEOUT_MS` (default: `14400000`)
+
+When orchestrator uses `EXECUTION_ENGINE=openclaw`, set `services/agent-runner` to:
+- `RUNNER_ENGINE=stub` or `RUNNER_ENGINE=docker`
+
+Avoid `RUNNER_ENGINE=openclaw` in this mode, or you will create a dispatch loop.
 
 ## OpenClaw Runtime Configuration
 - `OPENCLAW_CLI_BIN` (default: `openclaw`)
 - `OPENCLAW_CLI_MODE=gateway|agent-local` (default: `gateway`)
-- `OPENCLAW_CLI_TIMEOUT_MS` (default: `120000`)
+- `OPENCLAW_CLI_TIMEOUT_MS` (default: `1200000`)
 
 Gateway mode (`OPENCLAW_CLI_MODE=gateway`) invokes:
 - `openclaw gateway call agent --expect-final --json --params '{...}'`
