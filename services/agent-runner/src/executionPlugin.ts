@@ -8,7 +8,7 @@ import { ArchitecturePlan } from '@devclaw/contracts';
 
 const execFileAsync = promisify(execFile);
 
-interface ExecutionSubTask {
+export interface ExecutionSubTask {
     id: string;
     domain: 'frontend' | 'backend';
     agent: 'Frontend' | 'Backend';
@@ -31,6 +31,7 @@ export interface ExecutePayload {
     executionSubTasks?: ExecutionSubTask[];
     isolatedEnvironmentPath?: string;
     executionBranchName?: string;
+    agentLoopReport?: unknown;
 }
 
 export interface ExecuteDispatch {
@@ -39,7 +40,7 @@ export interface ExecuteDispatch {
     accepted: boolean;
 }
 
-interface ExecutionPlugin {
+export interface ExecutionPlugin {
     execute(payload: ExecutePayload): Promise<ExecuteDispatch>;
 }
 
@@ -56,12 +57,18 @@ class StubExecutionPlugin implements ExecutionPlugin {
 class OpenClawExecutionPlugin implements ExecutionPlugin {
     private readonly baseUrl = process.env.OPENCLAW_RUNNER_URL || 'http://localhost:3040';
     private readonly executePath = process.env.OPENCLAW_RUNNER_EXECUTE_PATH || '/api/execute';
+    private readonly timeoutMs = normalizeInteger(
+        process.env.RUNNER_OPENCLAW_EXECUTE_TIMEOUT_MS,
+        4 * 60 * 60 * 1000
+    );
 
     async execute(payload: ExecutePayload): Promise<ExecuteDispatch> {
         const res = await axios.post(`${this.baseUrl}${this.executePath}`, {
             ...payload,
             source: 'agent-runner',
             callbackUrl: process.env.ORCHESTRATOR_CALLBACK_URL,
+        }, {
+            timeout: this.timeoutMs,
         });
 
         return {
