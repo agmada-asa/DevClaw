@@ -25,8 +25,8 @@ export interface ModelConfig {
   policy: RolePolicy;
 }
 
-const DEEPSEEK_V32_MODEL = process.env.FLOCK_DEEPSEEK_V32_MODEL || 'deepseek-v3.2';
-const ZAI_REVIEWER_MODEL = process.env.ZAI_GLM_REVIEWER_MODEL || 'glm-4.7-flash';
+const GENERATOR_MODEL = process.env.GENERATOR_MODEL || 'deepseek-v3.2';
+const REVIEWER_MODEL = process.env.REVIEWER_MODEL || 'z-ai/glm-4.7-flash';
 
 const GENERATOR_POLICY: RolePolicy = {
   timeoutMs: 1200_000,
@@ -46,17 +46,17 @@ export const MODEL_CONFIG: Record<ModelRole, ModelConfig> = {
   // Legacy generator route, aligned with paired frontend/backend generators.
   generator: {
     provider: 'flock',
-    modelId: DEEPSEEK_V32_MODEL,
+    modelId: GENERATOR_MODEL,
     policy: GENERATOR_POLICY,
   },
 
   // Legacy reviewer route, aligned with paired frontend/backend reviewers.
   reviewer: {
-    provider: 'zai',
-    modelId: ZAI_REVIEWER_MODEL,
+    provider: 'openrouter',
+    modelId: REVIEWER_MODEL,
     fallback: {
       provider: 'flock',
-      modelId: DEEPSEEK_V32_MODEL,
+      modelId: GENERATOR_MODEL,
     },
     policy: REVIEWER_POLICY,
   },
@@ -64,17 +64,17 @@ export const MODEL_CONFIG: Record<ModelRole, ModelConfig> = {
   // Frontend generator is pinned to FLock DeepSeek V3.2.
   frontend_generator: {
     provider: 'flock',
-    modelId: DEEPSEEK_V32_MODEL,
+    modelId: GENERATOR_MODEL,
     policy: GENERATOR_POLICY,
   },
 
   // Frontend reviewer is pinned to Z.AI GLM.
   frontend_reviewer: {
-    provider: 'zai',
-    modelId: ZAI_REVIEWER_MODEL,
+    provider: 'openrouter',
+    modelId: REVIEWER_MODEL,
     fallback: {
       provider: 'flock',
-      modelId: DEEPSEEK_V32_MODEL,
+      modelId: GENERATOR_MODEL,
     },
     policy: REVIEWER_POLICY,
   },
@@ -82,17 +82,17 @@ export const MODEL_CONFIG: Record<ModelRole, ModelConfig> = {
   // Backend generator is pinned to FLock DeepSeek V3.2.
   backend_generator: {
     provider: 'flock',
-    modelId: DEEPSEEK_V32_MODEL,
+    modelId: GENERATOR_MODEL,
     policy: GENERATOR_POLICY,
   },
 
   // Backend reviewer is pinned to Z.AI GLM.
   backend_reviewer: {
-    provider: 'zai',
-    modelId: ZAI_REVIEWER_MODEL,
+    provider: 'openrouter',
+    modelId: REVIEWER_MODEL,
     fallback: {
       provider: 'flock',
-      modelId: DEEPSEEK_V32_MODEL,
+      modelId: GENERATOR_MODEL,
     },
     policy: REVIEWER_POLICY,
   },
