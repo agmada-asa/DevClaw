@@ -9,12 +9,21 @@ const mockPost = axios.post as jest.MockedFunction<typeof axios.post>;
   (err: unknown) => (err as any)?.isAxiosError === true,
 );
 
-const MOCK_SUCCESS = {
-  data: {
-    choices: [{ message: { content: 'mock reply' } }],
-    usage: { total_tokens: 10 },
-  },
-};
+function createMockStream(content: string) {
+  const payload = JSON.stringify({
+    choices: [{ delta: { content } }],
+  });
+  const chunk = Buffer.from(`data: ${payload}\n\ndata: [DONE]\n\n`, 'utf-8');
+  return {
+    data: {
+      async *[Symbol.asyncIterator]() {
+        yield chunk;
+      }
+    }
+  };
+}
+
+const MOCK_SUCCESS = createMockStream('mock reply');
 
 function makeAxiosHttpError(status: number, data: unknown = {}) {
   const err = new Error(`Request failed with status code ${status}`) as any;
@@ -36,6 +45,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   process.env.FLOCK_API_KEY = 'test-flock-key';
   process.env.ZAI_API_KEY = 'test-zai-key';
+  process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
   process.env.VENICE_API_KEY = 'test-venice-key';
   process.env.FLOCK_DEEPSEEK_V32_MODEL = 'deepseek-ai/DeepSeek-V3.2';
   process.env.ZAI_GLM_REVIEWER_MODEL = 'glm-4.7';
@@ -53,7 +63,7 @@ describe('role routing', () => {
     expect(mockPost).toHaveBeenCalledTimes(1);
     const [url, body] = mockPost.mock.calls[0];
     expect(url).toContain('flock');
-    expect((body as any).model).toContain('DeepSeek-V3.2');
+    expect((body as any).model).toContain('deepseek-v3.2');
     expect(result.provider).toBe('flock');
   });
 
@@ -69,7 +79,7 @@ describe('role routing', () => {
     expect(url).toContain('flock');
   });
 
-  it('routes frontend_reviewer to Z.AI GLM', async () => {
+  it('routes frontend_reviewer to OpenRouter GLM', async () => {
     mockPost.mockResolvedValueOnce(MOCK_SUCCESS);
 
     await chat({
@@ -78,11 +88,11 @@ describe('role routing', () => {
     });
 
     const [url, body] = mockPost.mock.calls[0];
-    expect(url).toContain('bigmodel');
+    expect(url).toContain('openrouter');
     expect((body as any).model).toContain('glm');
   });
 
-  it('routes backend_reviewer to Z.AI GLM', async () => {
+  it('routes backend_reviewer to OpenRouter GLM', async () => {
     mockPost.mockResolvedValueOnce(MOCK_SUCCESS);
 
     await chat({
@@ -91,7 +101,7 @@ describe('role routing', () => {
     });
 
     const [url, body] = mockPost.mock.calls[0];
-    expect(url).toContain('bigmodel');
+    expect(url).toContain('openrouter');
     expect((body as any).model).toContain('glm');
   });
 
@@ -108,7 +118,7 @@ describe('role routing', () => {
     });
 
     expect(legacyGenerator.provider).toBe('flock');
-    expect(legacyReviewer.provider).toBe('zai');
+    expect(legacyReviewer.provider).toBe('openrouter');
   });
 });
 
@@ -117,7 +127,7 @@ describe('request/response basics', () => {
     mockPost.mockResolvedValueOnce(MOCK_SUCCESS);
 
     await chat({
-      role: 'frontend_generator',
+      role: 'frontend_reviewer',
       messages: [{ role: 'user', content: 'Hi' }],
       temperature: 0.3,
       maxTokens: 777,
@@ -138,8 +148,8 @@ describe('request/response basics', () => {
 
     expect(result.content).toBe('mock reply');
     expect(typeof result.model).toBe('string');
-    expect(result.provider).toBe('zai');
-    expect(result.tokensUsed).toBe(10);
+    expect(result.provider).toBe('openrouter');
+    expect(result.tokensUsed).toBeUndefined();
   });
 });
 
@@ -157,7 +167,7 @@ describe('typed errors', () => {
     expect(err).toBeInstanceOf(RouterError);
     expect(err.statusCode).toBe(500);
     expect(err.role).toBe('frontend_reviewer');
-    expect(err.provider).toBe('zai');
+    expect(err.provider).toBe('flock');
     expect(err.requestId).toBe('req-http-1');
   });
 
@@ -206,7 +216,7 @@ describe('retry and fallback policy', () => {
 
     // maxRetries=2 means up to 3 attempts total.
     expect(mockPost).toHaveBeenCalledTimes(3);
-    expect(result.provider).toBe('zai');
+    expect(result.provider).toBe('openrouter');
   });
 
   it('never falls back generator calls to Venice when FLock fails', async () => {
@@ -237,15 +247,15 @@ describe('environment variable guardrails', () => {
     ).rejects.toThrow('FLOCK_API_KEY is not set');
   });
 
-  it('throws when ZAI_API_KEY is missing for reviewer routes', async () => {
-    delete process.env.ZAI_API_KEY;
+  it('throws when OPENROUTER_API_KEY is missing for reviewer routes', async () => {
+    delete process.env.OPENROUTER_API_KEY;
 
     await expect(
       chat({
         role: 'frontend_reviewer',
         messages: [{ role: 'user', content: 'Review patch' }],
       }),
-    ).rejects.toThrow('ZAI_API_KEY is not set');
+    ).rejects.toThrow('OPENROUTER_API_KEY is not set');
   });
 });
 
