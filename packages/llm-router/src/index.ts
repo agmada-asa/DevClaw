@@ -5,6 +5,36 @@ import { RouterError, ProviderHttpError, ProviderTimeoutError } from './errors';
 import { callFlock } from './providers/flock';
 import { callVenice } from './providers/venice';
 import { callZai } from './providers/zai';
+import { callOpenRouter } from './providers/openrouter';
+
+const toCompactJson = (value: unknown, fallback = 'n/a'): string => {
+  if (value === undefined) return fallback;
+  if (value === null) return 'null';
+  if (typeof value === 'string') {
+    return value.length > 400 ? `${value.slice(0, 400)}...(truncated)` : value;
+  }
+  try {
+    const json = JSON.stringify(value);
+    return json.length > 400 ? `${json.slice(0, 400)}...(truncated)` : json;
+  } catch {
+    return fallback;
+  }
+};
+
+const describeError = (err: unknown): string => {
+  if (err instanceof ProviderHttpError) {
+    return `${err.message}; requestId=${err.requestId || 'n/a'}; ` +
+      `responseBody=${toCompactJson(err.responseBody)}`;
+  }
+  if (err instanceof ProviderTimeoutError) {
+    return `${err.message}; requestId=${err.requestId || 'n/a'}`;
+  }
+  if (err instanceof RouterError) {
+    return `${err.message}; role=${err.role}; provider=${err.provider}; model=${err.model}; ` +
+      `requestId=${err.requestId || 'n/a'}`;
+  }
+  return err instanceof Error ? err.message : String(err);
+};
 
 // Returns true if this error is in the role's fallbackOn list, meaning it is
 // safe to retry or fall back. Permanent errors like 401/403 are never in the
@@ -34,9 +64,10 @@ async function callProvider(
   try {
     const { messages, temperature, maxTokens } = req;
     switch (provider) {
-      case 'flock':  return await callFlock(modelId, messages, temperature, maxTokens, timeoutMs);
+      case 'flock': return await callFlock(modelId, messages, temperature, maxTokens, timeoutMs);
       case 'venice': return await callVenice(modelId, messages, temperature, maxTokens, timeoutMs);
-      case 'zai':    return await callZai(modelId, messages, temperature, maxTokens, timeoutMs);
+      case 'zai': return await callZai(modelId, messages, temperature, maxTokens, timeoutMs);
+      case 'openrouter': return await callOpenRouter(modelId, messages, temperature, maxTokens, timeoutMs);
       default: {
         // TypeScript exhaustiveness check: if a new Provider value is added to
         // the union in types.ts but not handled here, the compiler will error
@@ -52,10 +83,6 @@ async function callProvider(
     if (err instanceof RouterError) throw err;
 
     if (axios.isAxiosError(err)) {
-      // ECONNABORTED = axios timeout, ERR_CANCELED = AbortController signal.
-      if (err.code === 'ECONNABORTED' || err.code === 'ERR_CANCELED') {
-        throw new ProviderTimeoutError(ctx);
-      }
       if (err.response) {
         throw new ProviderHttpError({
           ...ctx,
@@ -63,6 +90,10 @@ async function callProvider(
           responseBody: err.response.data,
         });
       }
+      // If we didn't receive an HTTP response, it's a network-level error 
+      // (timeout, ECONNRESET, ENOTFOUND, ERR_CANCELED, etc).
+      // We map all of these to ProviderTimeoutError to leverage the existing retry policy.
+      throw new ProviderTimeoutError(ctx);
     }
 
     // Non-axios error (e.g. missing API key check from provider file).
@@ -86,12 +117,14 @@ export async function chat(req: ChatRequest): Promise<ChatResponse> {
   const { timeoutMs, maxRetries, fallbackOn } = config.policy;
   const maxAttempts = 1 + maxRetries;
   let lastErr: unknown;
+  let attemptsMade = 0;
 
   // Retry loop — keeps trying the primary provider while:
   //   (a) the error is listed in fallbackOn (i.e. transient, worth retrying), and
   //   (b) we still have attempts remaining.
   // Permanent errors (e.g. 401) break out immediately on the first failure.
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    attemptsMade = attempt;
     try {
       return await callProvider(config.provider, config.modelId, req, timeoutMs);
     } catch (err) {
@@ -100,21 +133,24 @@ export async function chat(req: ChatRequest): Promise<ChatResponse> {
       if (!retryable || attempt === maxAttempts) break;
       console.warn(
         `[llm-router] Attempt ${attempt}/${maxAttempts} failed for role "${req.role}" on ` +
-        `"${config.provider}" — retrying.`,
+        `"${config.provider}" — retrying. Reason: ${describeError(err)}`,
       );
     }
   }
 
   // After exhausting retries, try the fallback provider if configured and eligible.
   if (config.fallback && shouldFallback(lastErr, fallbackOn)) {
-    const errMsg = lastErr instanceof Error ? lastErr.message : String(lastErr);
     console.warn(
       `[llm-router] Primary "${config.provider}" exhausted for role "${req.role}" — ` +
-      `falling back to "${config.fallback.provider}". Reason: ${errMsg}`,
+      `falling back to "${config.fallback.provider}". Reason: ${describeError(lastErr)}`,
     );
     return await callProvider(config.fallback.provider, config.fallback.modelId, req, timeoutMs);
   }
 
+  console.error(
+    `[llm-router] Request failed for role "${req.role}" on provider "${config.provider}" after ` +
+    `${attemptsMade} attempt(s). Error: ${describeError(lastErr)}`,
+  );
   throw lastErr;
 }
 

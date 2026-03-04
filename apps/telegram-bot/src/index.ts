@@ -14,6 +14,31 @@ if (!BOT_TOKEN) {
 
 const bot = new Telegraf(BOT_TOKEN);
 
+const parsePositiveInt = (value: string | undefined, fallback: number): number => {
+    const parsed = Number.parseInt(value || '', 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const BOT_GATEWAY_TIMEOUT_MS = parsePositiveInt(process.env.BOT_GATEWAY_TIMEOUT_MS, 20 * 60 * 1000);
+const BOT_GATEWAY_APPROVAL_TIMEOUT_MS = parsePositiveInt(
+    process.env.BOT_GATEWAY_APPROVAL_TIMEOUT_MS,
+    4 * 60 * 60 * 1000
+);
+const BOT_GATEWAY_REFINE_TIMEOUT_MS = parsePositiveInt(
+    process.env.BOT_GATEWAY_REFINE_TIMEOUT_MS,
+    20 * 60 * 1000
+);
+
+const resolveGatewayTimeoutMs = (type: string): number => {
+    if (type === 'approve') {
+        return BOT_GATEWAY_APPROVAL_TIMEOUT_MS;
+    }
+    if (type === 'refine') {
+        return BOT_GATEWAY_REFINE_TIMEOUT_MS;
+    }
+    return BOT_GATEWAY_TIMEOUT_MS;
+};
+
 const WELCOME_MESSAGE = `Welcome to DevClaw! 🚀
 
 Here is how to get started:
@@ -98,6 +123,8 @@ export const handleTextMessage = async (ctx: Context<any>) => {
         const response = await axios.post(GATEWAY_URL, {
             provider: 'telegram',
             payload
+        }, {
+            timeout: resolveGatewayTimeoutMs(payload.type),
         });
 
         if (response.status === 200) {

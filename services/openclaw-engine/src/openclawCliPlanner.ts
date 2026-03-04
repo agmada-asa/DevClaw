@@ -225,7 +225,7 @@ const buildRevisionPrompt = (input: OpenClawRevisionPromptInput): string => {
 
 const runGatewayAgentPrompt = async (prompt: string): Promise<string> => {
     const cliBin = process.env.OPENCLAW_CLI_BIN || 'openclaw';
-    const timeoutMs = parseNumberEnv(process.env.OPENCLAW_CLI_TIMEOUT_MS, 120000);
+    const timeoutMs = parseNumberEnv(process.env.OPENCLAW_CLI_TIMEOUT_MS, 20 * 60 * 1000);
     const timeoutSeconds = Math.max(1, Math.ceil(timeoutMs / 1000));
     const params = {
         message: prompt,
@@ -273,7 +273,7 @@ const runGatewayAgentPrompt = async (prompt: string): Promise<string> => {
 
 const runAgentLocalPrompt = async (prompt: string): Promise<string> => {
     const cliBin = process.env.OPENCLAW_CLI_BIN || 'openclaw';
-    const timeoutMs = parseNumberEnv(process.env.OPENCLAW_CLI_TIMEOUT_MS, 120000);
+    const timeoutMs = parseNumberEnv(process.env.OPENCLAW_CLI_TIMEOUT_MS, 20 * 60 * 1000);
     const timeoutSeconds = Math.max(1, Math.ceil(timeoutMs / 1000));
     const to = process.env.OPENCLAW_LOCAL_TO || '+15555550123';
     const args = [

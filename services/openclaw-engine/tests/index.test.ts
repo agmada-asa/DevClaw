@@ -1,4 +1,67 @@
 import request from 'supertest';
+import axios from 'axios';
+
+jest.mock('axios');
+const mockPost = axios.post as jest.MockedFunction<typeof axios.post>;
+const mockPlanRecords = new Map<string, any>();
+
+jest.mock('../src/planStore', () => {
+    const store = {
+        saveNewPlan: jest.fn(async (input: any) => {
+            const now = new Date().toISOString();
+            const record = {
+                plan: input.plan,
+                revision: 1,
+                source: input.source,
+                createdAt: now,
+                updatedAt: now,
+                revisionHistory: [
+                    {
+                        revision: 1,
+                        updatedAt: now,
+                        reason: 'Initial architecture plan created',
+                        source: input.source,
+                    },
+                ],
+                blueprint: input.blueprint,
+            };
+            mockPlanRecords.set(input.plan.planId, record);
+            return record;
+        }),
+        getPlan: jest.fn(async (planId: string) => mockPlanRecords.get(planId) || null),
+        savePlanRevision: jest.fn(async (input: any) => {
+            const existing = mockPlanRecords.get(input.planId);
+            if (!existing) {
+                return null;
+            }
+            const now = new Date().toISOString();
+            const revision = existing.revision + 1;
+            const record = {
+                ...existing,
+                plan: input.plan,
+                revision,
+                source: input.source,
+                updatedAt: now,
+                revisionHistory: [
+                    ...(existing.revisionHistory || []),
+                    {
+                        revision,
+                        updatedAt: now,
+                        reason: input.reason,
+                        source: input.source,
+                    },
+                ],
+                blueprint: input.blueprint,
+            };
+            mockPlanRecords.set(input.planId, record);
+            return record;
+        }),
+    };
+
+    return {
+        getPlanStore: jest.fn(() => store),
+    };
+});
 
 jest.mock('../src/openclawCliPlanner', () => ({
     createPlanWithOpenClawCli: jest.fn(async (_input: any) => ({
@@ -30,6 +93,11 @@ jest.mock('../src/openclawCliPlanner', () => ({
 import app from '../src/index';
 
 describe('OpenClaw Engine API', () => {
+    beforeEach(() => {
+        mockPlanRecords.clear();
+        jest.clearAllMocks();
+    });
+
     it('GET /health -> 200 ok', async () => {
         const res = await request(app).get('/health');
         expect(res.status).toBe(200);
@@ -113,9 +181,41 @@ describe('OpenClaw Engine API', () => {
         expect(updated.body.blueprint.phases).toHaveLength(5);
     });
 
-    it('POST /api/execute -> 501 until execution pipeline is implemented', async () => {
-        const res = await request(app).post('/api/execute').send({ runId: 'run-1' });
-        expect(res.status).toBe(501);
-        expect(res.body.status).toBe('planning_only');
+    it('POST /api/execute -> 400 when runId is missing', async () => {
+        const res = await request(app).post('/api/execute').send({});
+        expect(res.status).toBe(400);
+        expect(res.body.error).toMatch(/runId/);
+    });
+
+    it('POST /api/execute -> 409 when source indicates recursive loop', async () => {
+        const res = await request(app).post('/api/execute').send({
+            runId: 'run-loop',
+            source: 'agent-runner',
+        });
+        expect(res.status).toBe(409);
+        expect(res.body.error).toMatch(/loop detected/i);
+    });
+
+    it('POST /api/execute -> 202 and dispatch metadata', async () => {
+        mockPost.mockResolvedValueOnce({
+            data: {
+                runRef: 'stub-run-123',
+                engine: 'stub',
+            },
+        } as any);
+
+        const res = await request(app).post('/api/execute').send({
+            runId: 'run-123',
+            planId: 'plan-123',
+            source: 'orchestrator',
+        });
+
+        expect(res.status).toBe(202);
+        expect(res.body.success).toBe(true);
+        expect(res.body.status).toBe('dispatched');
+        expect(res.body.runRef).toBe('stub-run-123');
+        expect(res.body.engine).toBe('stub');
+        expect(mockPost).toHaveBeenCalledTimes(1);
+        expect(mockPost.mock.calls[0][0]).toContain('/api/execute');
     });
 });

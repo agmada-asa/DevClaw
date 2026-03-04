@@ -7,6 +7,12 @@ import { v4 as uuidv4 } from 'uuid';
 import { IntakeRequest } from '@devclaw/contracts';
 import { createOrDedupeIssue } from './githubClient';
 import { getOrchestrationEngine } from './orchestrationEngine';
+import {
+    buildExecutionSubTasks,
+    provisionIsolatedExecutionEnvironment,
+    resolveApprovedPlan,
+    resolvePreferredExecutionBranch,
+} from './executionPreparation';
 
 dotenv.config();
 
@@ -20,6 +26,26 @@ const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 const orchestrationEngine = getOrchestrationEngine();
+
+const parsePositiveInt = (value: string | undefined, fallback: number): number => {
+    const parsed = Number.parseInt(value || '', 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const ORCHESTRATOR_BOT_SEND_TIMEOUT_MS = parsePositiveInt(
+    process.env.ORCHESTRATOR_BOT_SEND_TIMEOUT_MS,
+    20_000
+);
+
+const resolveBotUrl = (channel: unknown): string | undefined => {
+    if (channel === 'telegram') {
+        return process.env.TELEGRAM_BOT_URL;
+    }
+    if (channel === 'whatsapp') {
+        return process.env.WHATSAPP_BOT_URL;
+    }
+    return undefined;
+};
 
 const formatErrorDetails = (err: any): string => {
     const message = err?.message || 'Unknown error';
@@ -156,12 +182,12 @@ app.post('/api/task', async (req: Request, res: Response): Promise<any> => {
             // Send failure message directly to chat
             if (chatId) {
                 const failureMessage = `❌ Oh no! I failed to generate the architecture plan for issue #${issueNumber}.\nError: ${err?.message || 'Gateway timeout or planner unavailable.'}`;
-                let botUrl: string | undefined;
-                if (channel === 'telegram') botUrl = process.env.TELEGRAM_BOT_URL;
-                else if (channel === 'whatsapp') botUrl = process.env.WHATSAPP_BOT_URL;
+                const botUrl = resolveBotUrl(channel);
 
                 if (botUrl) {
-                    axios.post(`${botUrl}/api/send`, { chatId, message: failureMessage }).catch(e => console.error(e));
+                    axios.post(`${botUrl}/api/send`, { chatId, message: failureMessage }, {
+                        timeout: ORCHESTRATOR_BOT_SEND_TIMEOUT_MS,
+                    }).catch(e => console.error(e));
                 }
             }
             return;
@@ -222,16 +248,13 @@ app.post('/api/task', async (req: Request, res: Response): Promise<any> => {
 
         // ── Step 6: Fire approval card to the user's chat (fire-and-forget) ──────
         if (chatId) {
-            let botUrl: string | undefined;
-            if (channel === 'telegram') {
-                botUrl = process.env.TELEGRAM_BOT_URL;
-            } else if (channel === 'whatsapp') {
-                botUrl = process.env.WHATSAPP_BOT_URL;
-            }
+            const botUrl = resolveBotUrl(channel);
 
             if (botUrl) {
                 axios
-                    .post(`${botUrl}/api/send`, { chatId, message: approvalMessage })
+                    .post(`${botUrl}/api/send`, { chatId, message: approvalMessage }, {
+                        timeout: ORCHESTRATOR_BOT_SEND_TIMEOUT_MS,
+                    })
                     .then(() =>
                         console.log(`[Orchestrator] Sent approval card to ${channel} chat ${chatId}`)
                     )
@@ -276,34 +299,146 @@ app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
         return res.status(404).json({ error: 'Task run not found' });
     }
 
-    let execution: import('./orchestrationEngine').ExecuteResult | undefined;
-    try {
-        execution = await orchestrationEngine.execute({
-            runId: updated.id,
-            planId: updated.plan_id,
-            requestId: updated.plan_details?.requestId,
-            userId: updated.user_id,
-            repo: updated.repo,
-            issueNumber: updated.issue_number,
-            issueUrl: updated.issue_url,
-            description: updated.description,
-            planDetails: updated.plan_details,
-        });
-    } catch (err: any) {
-        console.error('[Orchestrator] Failed to dispatch approved task for execution:', formatErrorDetails(err));
-        return res.status(502).json({
-            error: 'Task was approved but execution dispatch failed.',
-            task: updated,
-        });
+    if (updated.chat_id) {
+        const botUrl = resolveBotUrl(updated.channel);
+        if (botUrl) {
+            const inProgressMessage = [
+                `✅ Plan ${updated.plan_id} approved.`,
+                `🛠️ Started implementation for ${updated.repo || 'your repository'}.`,
+                'The agents are now working on this. I will send another update when execution completes or if it fails.',
+            ].join('\n');
+            axios
+                .post(`${botUrl}/api/send`, {
+                    chatId: updated.chat_id,
+                    message: inProgressMessage,
+                }, {
+                    timeout: ORCHESTRATOR_BOT_SEND_TIMEOUT_MS,
+                })
+                .then(() => {
+                    console.log(
+                        `[Orchestrator] Sent execution-start update to ${updated.channel} chat ${updated.chat_id}`
+                    );
+                })
+                .catch((notifyErr: any) => {
+                    console.warn(
+                        `[Orchestrator] Failed to send execution-start update to ${updated.channel}: ` +
+                        `${notifyErr?.message || notifyErr}`
+                    );
+                });
+        }
     }
 
     console.log(`[Orchestrator] Task ${updated.id} (plan ${updated.plan_id}) was APPROVED`);
-    return res.status(200).json({
+    res.status(200).json({
         success: true,
         message: 'Task approved and dispatched for execution',
         task: updated,
-        execution,
+        execution: {
+            status: 'queued',
+        },
     });
+
+    // Run execution asynchronously to prevent gateway timeouts
+    (async () => {
+        let execution: import('./orchestrationEngine').ExecuteResult | undefined;
+        let preparation:
+            | {
+                isolatedEnvironmentPath: string;
+                executionBranchName: string;
+                subTaskCount: number;
+            }
+            | undefined;
+        try {
+            const approvedPlan = resolveApprovedPlan(updated.plan_details);
+            if (!approvedPlan) {
+                console.error('[Orchestrator] Approved task is missing a valid architecture plan.', updated);
+                return;
+            }
+
+            if (!updated.repo || typeof updated.repo !== 'string') {
+                console.error('[Orchestrator] Approved task is missing repository metadata for execution.', updated);
+                return;
+            }
+
+            const executionSubTasks = buildExecutionSubTasks(approvedPlan);
+            const preferredBranch = resolvePreferredExecutionBranch(
+                updated.plan_details,
+                updated.plan_id,
+                updated.description
+            );
+
+            let githubToken: string | undefined;
+            if (updated.user_id) {
+                const { data: userPrefs, error: prefsError } = await supabase
+                    .from('user_preferences')
+                    .select('github_token')
+                    .eq('user_id', updated.user_id)
+                    .single();
+
+                if (!prefsError && userPrefs?.github_token) {
+                    githubToken = userPrefs.github_token;
+                }
+            }
+
+            const isolatedEnvironment = await provisionIsolatedExecutionEnvironment({
+                runId: updated.id,
+                repoFullName: updated.repo,
+                planId: approvedPlan.planId || updated.plan_id,
+                description: updated.description || approvedPlan.summary,
+                planDetails: updated.plan_details,
+                preferredBranchName: preferredBranch.branchName,
+                githubToken,
+            });
+
+            preparation = {
+                isolatedEnvironmentPath: isolatedEnvironment.workspacePath,
+                executionBranchName: isolatedEnvironment.branchName,
+                subTaskCount: executionSubTasks.length,
+            };
+
+            execution = await orchestrationEngine.execute({
+                runId: updated.id,
+                planId: approvedPlan.planId || updated.plan_id,
+                requestId: approvedPlan.requestId,
+                userId: updated.user_id,
+                repo: updated.repo,
+                issueNumber: updated.issue_number,
+                issueUrl: updated.issue_url,
+                description: updated.description,
+                planDetails: approvedPlan,
+                executionSubTasks,
+                isolatedEnvironmentPath: isolatedEnvironment.workspacePath,
+                executionBranchName: isolatedEnvironment.branchName,
+            });
+
+            if (execution.approvedPatchSet) {
+                const patchSetRef = (execution.approvedPatchSet as any)?.patchSetRef || 'n/a';
+                console.log(
+                    `[Orchestrator] Received approved patch set for run ${updated.id}: ${patchSetRef}`
+                );
+            }
+            if (execution.branchPush) {
+                const branchName = (execution.branchPush as any)?.branchName || 'n/a';
+                const pushed = (execution.branchPush as any)?.pushed;
+                console.log(
+                    `[Orchestrator] Execution branch status for run ${updated.id}: ` +
+                    `branch=${branchName} pushed=${String(pushed)}`
+                );
+            }
+            console.log(`[Orchestrator] Task ${updated.id} execution completed asynchronously.`);
+        } catch (err: any) {
+            console.error('[Orchestrator] Failed to dispatch approved task for execution:', formatErrorDetails(err));
+            if (updated.chat_id) {
+                const botUrl = resolveBotUrl(updated.channel);
+                if (botUrl) {
+                    axios.post(`${botUrl}/api/send`, {
+                        chatId: updated.chat_id,
+                        message: `❌ Execution for plan ${updated.plan_id} failed: ${err?.message || 'Unknown error'}`,
+                    }, { timeout: ORCHESTRATOR_BOT_SEND_TIMEOUT_MS }).catch(() => { });
+                }
+            }
+        }
+    })();
 });
 
 // ─── POST /api/reject ────────────────────────────────────────────────────────
@@ -380,13 +515,13 @@ app.post('/api/refine', async (req: Request, res: Response): Promise<any> => {
             if (chatId || existingRun.chat_id) {
                 const targetChatId = chatId || existingRun.chat_id;
                 const failureMessage = `❌ I failed to refine the architecture plan for issue #${existingRun.issue_number}.\nError: ${err?.message || 'Gateway timeout or planner unavailable.'}`;
-                let botUrl: string | undefined;
                 const targetChannel = channel || existingRun.channel;
-                if (targetChannel === 'telegram') botUrl = process.env.TELEGRAM_BOT_URL;
-                else if (targetChannel === 'whatsapp') botUrl = process.env.WHATSAPP_BOT_URL;
+                const botUrl = resolveBotUrl(targetChannel);
 
                 if (botUrl) {
-                    axios.post(`${botUrl}/api/send`, { chatId: targetChatId, message: failureMessage }).catch(e => console.error(e));
+                    axios.post(`${botUrl}/api/send`, { chatId: targetChatId, message: failureMessage }, {
+                        timeout: ORCHESTRATOR_BOT_SEND_TIMEOUT_MS,
+                    }).catch(e => console.error(e));
                 }
             }
             return;
@@ -431,12 +566,12 @@ app.post('/api/refine', async (req: Request, res: Response): Promise<any> => {
         const botChannel = channel || existingRun.channel;
         const targetChatId = chatId || existingRun.chat_id;
         if (targetChatId) {
-            let botUrl: string | undefined;
-            if (botChannel === 'telegram') botUrl = process.env.TELEGRAM_BOT_URL;
-            else if (botChannel === 'whatsapp') botUrl = process.env.WHATSAPP_BOT_URL;
+            const botUrl = resolveBotUrl(botChannel);
 
             if (botUrl) {
-                axios.post(`${botUrl}/api/send`, { chatId: targetChatId, message: approvalMessage }).catch(e => console.error(e));
+                axios.post(`${botUrl}/api/send`, { chatId: targetChatId, message: approvalMessage }, {
+                    timeout: ORCHESTRATOR_BOT_SEND_TIMEOUT_MS,
+                }).catch(e => console.error(e));
             }
         }
     })();

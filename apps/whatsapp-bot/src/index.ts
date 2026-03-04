@@ -8,6 +8,31 @@ dotenv.config();
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3001/api/ingress/message';
 
+const parsePositiveInt = (value: string | undefined, fallback: number): number => {
+    const parsed = Number.parseInt(value || '', 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const BOT_GATEWAY_TIMEOUT_MS = parsePositiveInt(process.env.BOT_GATEWAY_TIMEOUT_MS, 20 * 60 * 1000);
+const BOT_GATEWAY_APPROVAL_TIMEOUT_MS = parsePositiveInt(
+    process.env.BOT_GATEWAY_APPROVAL_TIMEOUT_MS,
+    4 * 60 * 60 * 1000
+);
+const BOT_GATEWAY_REFINE_TIMEOUT_MS = parsePositiveInt(
+    process.env.BOT_GATEWAY_REFINE_TIMEOUT_MS,
+    20 * 60 * 1000
+);
+
+const resolveGatewayTimeoutMs = (type: string): number => {
+    if (type === 'approve') {
+        return BOT_GATEWAY_APPROVAL_TIMEOUT_MS;
+    }
+    if (type === 'refine') {
+        return BOT_GATEWAY_REFINE_TIMEOUT_MS;
+    }
+    return BOT_GATEWAY_TIMEOUT_MS;
+};
+
 // Initialize the WhatsApp client with LocalAuth to persist session so we don't scan QR every time
 const client = new Client({
     authStrategy: new LocalAuth(),
@@ -112,6 +137,8 @@ export const handleMessage = async (message: any) => {
         const response = await axios.post(GATEWAY_URL, {
             provider: 'whatsapp',
             payload
+        }, {
+            timeout: resolveGatewayTimeoutMs(payload.type),
         });
 
         if (response.status === 200) {

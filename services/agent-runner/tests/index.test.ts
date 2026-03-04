@@ -1,4 +1,6 @@
 import request from 'supertest';
+
+process.env.RUNNER_ENGINE = 'stub';
 import app from '../src/index';
 
 describe('Agent Runner API', () => {

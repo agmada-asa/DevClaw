@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import { getOpenClawPlanningEngine } from './openclawPlanningEngine';
 import { getPlanStore } from './planStore';
 import { OpenClawPlanRecord } from './types';
+import { getExecutionDispatcher } from './executionDispatcher';
 
 dotenv.config();
 
@@ -15,6 +16,36 @@ app.use(express.json());
 
 const planningEngine = getOpenClawPlanningEngine();
 const planStore = getPlanStore();
+const executionDispatcher = getExecutionDispatcher();
+
+const toCompactJson = (value: unknown, fallback = 'n/a'): string => {
+    if (value === undefined) return fallback;
+    if (value === null) return 'null';
+    if (typeof value === 'string') {
+        return value.length > 500 ? `${value.slice(0, 500)}...(truncated)` : value;
+    }
+    try {
+        const json = JSON.stringify(value);
+        return json.length > 500 ? `${json.slice(0, 500)}...(truncated)` : json;
+    } catch {
+        return fallback;
+    }
+};
+
+const formatExecutionError = (err: any): string => {
+    if (!err) return 'unknown execution dispatch error';
+
+    const details: string[] = [];
+    const message = typeof err.message === 'string' ? err.message : String(err);
+    details.push(`message=${message}`);
+
+    if (typeof err.response?.status === 'number') details.push(`status=${err.response.status}`);
+    if (typeof err.response?.statusText === 'string') details.push(`statusText=${err.response.statusText}`);
+    if (typeof err.config?.url === 'string') details.push(`url=${err.config.url}`);
+    if (err.response?.data !== undefined) details.push(`data=${toCompactJson(err.response.data)}`);
+
+    return details.join(' | ');
+};
 
 const normalizeSource = (value: unknown): string => {
     if (typeof value === 'string' && value.trim()) {
@@ -41,7 +72,7 @@ app.get('/health', (_req: Request, res: Response) => {
     res.status(200).json({
         status: 'ok',
         service: 'openclaw-engine',
-        capabilities: ['plan.create', 'plan.update', 'plan.get'],
+        capabilities: ['plan.create', 'plan.update', 'plan.get', 'execute.dispatch'],
         runtime: 'openclaw-cli',
     });
 });
@@ -165,14 +196,47 @@ app.post('/api/plan/:planId/update', async (req: Request, res: Response): Promis
 /**
  * POST /api/execute
  * 
- * Placeholder for the next-generation OpenClaw execution pipeline.
- * Currently, execution is typically handled by the legacy agent-runner.
+ * Dispatches execution to the agent-runner service while keeping OpenClaw
+ * as the orchestration entrypoint for execution.
  */
-app.post('/api/execute', (_req: Request, res: Response) => {
-    return res.status(501).json({
-        error: 'Execution pipeline is not implemented in openclaw-engine yet. Use planning endpoints under /api/plan.',
-        status: 'planning_only',
-    });
+app.post('/api/execute', async (req: Request, res: Response): Promise<any> => {
+    const payload = req.body || {};
+    const runId = typeof payload.runId === 'string' ? payload.runId.trim() : '';
+    const source = typeof payload.source === 'string' ? payload.source.trim() : '';
+
+    if (!runId) {
+        return res.status(400).json({
+            error: 'Missing required field: runId',
+        });
+    }
+
+    if (source.toLowerCase() === 'agent-runner') {
+        return res.status(409).json({
+            error: 'Execution dispatch loop detected (agent-runner -> openclaw-engine -> agent-runner).',
+            hint: 'Set RUNNER_ENGINE=stub or RUNNER_ENGINE=docker when orchestrator uses EXECUTION_ENGINE=openclaw.',
+        });
+    }
+
+    try {
+        const dispatch = await executionDispatcher.dispatch({
+            ...payload,
+            runId,
+        });
+        return res.status(202).json({
+            success: true,
+            status: 'dispatched',
+            runRef: dispatch.runRef,
+            engine: dispatch.engine,
+            accepted: dispatch.accepted,
+        });
+    } catch (err: any) {
+        const detail = formatExecutionError(err);
+        console.error(`[OpenClawEngine] Failed to dispatch execution for runId=${runId}: ${detail}`);
+        return res.status(502).json({
+            error: 'Failed to dispatch execution run',
+            detail,
+        });
+    }
 });
 
 if (require.main === module) {
