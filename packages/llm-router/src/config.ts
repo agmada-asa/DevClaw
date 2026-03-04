@@ -54,6 +54,10 @@ export const MODEL_CONFIG: Record<ModelRole, ModelConfig> = {
   reviewer: {
     provider: 'zai',
     modelId: ZAI_REVIEWER_MODEL,
+    fallback: {
+      provider: 'flock',
+      modelId: DEEPSEEK_V32_MODEL,
+    },
     policy: REVIEWER_POLICY,
   },
 
@@ -68,6 +72,10 @@ export const MODEL_CONFIG: Record<ModelRole, ModelConfig> = {
   frontend_reviewer: {
     provider: 'zai',
     modelId: ZAI_REVIEWER_MODEL,
+    fallback: {
+      provider: 'flock',
+      modelId: DEEPSEEK_V32_MODEL,
+    },
     policy: REVIEWER_POLICY,
   },
 
@@ -82,6 +90,10 @@ export const MODEL_CONFIG: Record<ModelRole, ModelConfig> = {
   backend_reviewer: {
     provider: 'zai',
     modelId: ZAI_REVIEWER_MODEL,
+    fallback: {
+      provider: 'flock',
+      modelId: DEEPSEEK_V32_MODEL,
+    },
     policy: REVIEWER_POLICY,
   },
 
