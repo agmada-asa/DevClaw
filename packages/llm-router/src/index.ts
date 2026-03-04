@@ -5,6 +5,7 @@ import { RouterError, ProviderHttpError, ProviderTimeoutError } from './errors';
 import { callFlock } from './providers/flock';
 import { callVenice } from './providers/venice';
 import { callZai } from './providers/zai';
+import { callOpenRouter } from './providers/openrouter';
 
 const toCompactJson = (value: unknown, fallback = 'n/a'): string => {
   if (value === undefined) return fallback;
@@ -66,6 +67,7 @@ async function callProvider(
       case 'flock': return await callFlock(modelId, messages, temperature, maxTokens, timeoutMs);
       case 'venice': return await callVenice(modelId, messages, temperature, maxTokens, timeoutMs);
       case 'zai': return await callZai(modelId, messages, temperature, maxTokens, timeoutMs);
+      case 'openrouter': return await callOpenRouter(modelId, messages, temperature, maxTokens, timeoutMs);
       default: {
         // TypeScript exhaustiveness check: if a new Provider value is added to
         // the union in types.ts but not handled here, the compiler will error

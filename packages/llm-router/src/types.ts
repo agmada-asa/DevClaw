@@ -11,7 +11,7 @@ export type ModelRole =
   | 'planner';
 
 // The actual AI provider companies.
-export type Provider = 'flock' | 'venice' | 'zai';
+export type Provider = 'flock' | 'venice' | 'zai' | 'openrouter';
 
 // A single message in a conversation — same shape as OpenAI's API format,
 // which all three providers follow.
