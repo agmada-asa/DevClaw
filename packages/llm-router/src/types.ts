@@ -1,6 +1,14 @@
 // The logical name for which agent is making the call.
 // llm-router uses this to decide which model + provider to use.
-export type ModelRole = 'generator' | 'reviewer' | 'orchestrator' | 'planner';
+export type ModelRole =
+  | 'generator'
+  | 'reviewer'
+  | 'frontend_generator'
+  | 'frontend_reviewer'
+  | 'backend_generator'
+  | 'backend_reviewer'
+  | 'orchestrator'
+  | 'planner';
 
 // The actual AI provider companies.
 export type Provider = 'flock' | 'venice' | 'zai';
