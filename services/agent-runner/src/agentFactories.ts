@@ -8,6 +8,13 @@ type ReviewerRole = Extract<ModelRole, 'frontend_reviewer' | 'backend_reviewer'>
 
 export type ReviewerDecision = 'APPROVED' | 'REWRITE';
 
+export interface WorkspaceFileSnapshot {
+    path: string;
+    exists: boolean;
+    content: string;
+    truncated: boolean;
+}
+
 export interface GeneratorRunInput {
     runId: string;
     requestId?: string;
@@ -15,6 +22,9 @@ export interface GeneratorRunInput {
     iteration: number;
     subTask: ExecutionSubTask;
     reviewerNotes: string[];
+    workspacePath?: string;
+    executionBranchName?: string;
+    fileSnapshots?: WorkspaceFileSnapshot[];
 }
 
 export interface GeneratorRunOutput {
@@ -30,6 +40,11 @@ export interface ReviewerRunInput {
     iteration: number;
     subTask: ExecutionSubTask;
     generation: GeneratorRunOutput;
+    workspacePath?: string;
+    executionBranchName?: string;
+    proposedPatch?: string;
+    workspaceDiff?: string;
+    fileSnapshots?: WorkspaceFileSnapshot[];
 }
 
 export interface ReviewerRunOutput {
@@ -71,15 +86,21 @@ const asNonEmptyStringArray = (value: unknown): string[] => {
 };
 
 const extractJsonObject = (text: string): string | null => {
-    const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (fenceMatch?.[1]) {
-        return fenceMatch[1].trim();
+    let cleanText = text.trim();
+    if (cleanText.toLowerCase().startsWith('```json')) {
+        cleanText = cleanText.substring(7).trim();
+    } else if (cleanText.startsWith('```')) {
+        cleanText = cleanText.substring(3).trim();
     }
 
-    const start = text.indexOf('{');
-    const end = text.lastIndexOf('}');
+    if (cleanText.endsWith('```')) {
+        cleanText = cleanText.substring(0, cleanText.length - 3).trim();
+    }
+
+    const start = cleanText.indexOf('{');
+    const end = cleanText.lastIndexOf('}');
     if (start !== -1 && end > start) {
-        return text.slice(start, end + 1).trim();
+        return cleanText.slice(start, end + 1).trim();
     }
 
     return null;
@@ -121,13 +142,36 @@ const buildGeneratorMessages = (
         ? input.reviewerNotes.map((note) => `- ${note}`).join('\n')
         : '- No prior reviewer notes.';
 
+    const workspaceContext = [
+        `workspacePath: ${input.workspacePath || 'n/a'}`,
+        `executionBranch: ${input.executionBranchName || 'n/a'}`,
+        `targetFiles: ${JSON.stringify(input.subTask.files)}`,
+        'fileSnapshots:',
+        JSON.stringify(input.fileSnapshots || [], null, 2),
+    ].join('\n');
+
     return [
         {
             role: 'system',
             content: [
                 `You are the ${agentName} Generator Agent.`,
-                'Produce implementation output for the assigned files.',
-                'Return plain text with concrete change instructions and verification notes.',
+                'Implement the requested code changes directly against the provided repository snapshots.',
+                'You MUST output your response as a SINGLE, valid JSON object.',
+                'The JSON object must have this exact shape:',
+                '{',
+                '  "summary": "String explaining the changes",',
+                '  "notes": ["String array of architectural or important notes"],',
+                '  "files": [',
+                '    {',
+                '      "path": "relative/path/to/file.ext",',
+                '      "content": "Full, complete file content here. Do not use file diffs or patches, just an entire rewrite. Do not truncate or use placeholders. Must be the entire file content."',
+                '    }',
+                '  ]',
+                '}',
+                'Do not include any text outside the JSON object.',
+                'Keep changes scoped to the assigned files unless absolutely necessary.',
+                'CRITICAL: DO NOT try to generate contents for binary files or non-text files (e.g., .ico, .png, .jpg, .svg). If a non-text file is required, mention it in the "notes" array instead of generating it.',
+                'CRITICAL: To avoid exceeding the max_tokens limit, ensure your overall JSON response is concise. Do not generate unnecessarily large files if they are not strictly required.',
             ].join('\n'),
         },
         {
@@ -139,6 +183,7 @@ const buildGeneratorMessages = (
                 `iteration: ${input.iteration}`,
                 `objective: ${input.subTask.objective}`,
                 `files: ${JSON.stringify(input.subTask.files)}`,
+                workspaceContext,
                 'reviewerNotes:',
                 reviewContext,
             ].join('\n'),
@@ -167,8 +212,16 @@ const buildReviewerMessages = (
                 `iteration: ${input.iteration}`,
                 `objective: ${input.subTask.objective}`,
                 `files: ${JSON.stringify(input.subTask.files)}`,
+                `workspacePath: ${input.workspacePath || 'n/a'}`,
+                `executionBranch: ${input.executionBranchName || 'n/a'}`,
+                'fileSnapshots:',
+                JSON.stringify(input.fileSnapshots || [], null, 2),
                 'generatorOutput:',
                 input.generation.content,
+                'proposedPatch:',
+                input.proposedPatch || 'n/a',
+                'workspaceDiffAfterPatch:',
+                input.workspaceDiff || 'n/a',
             ].join('\n'),
         },
     ];
@@ -292,4 +345,3 @@ export class AgentPairFactoryRegistry {
         return this.backendFactory.createPair();
     }
 }
-
