@@ -32,11 +32,45 @@ export interface ExecutePayload {
     isolatedEnvironmentPath?: string;
     executionBranchName?: string;
     agentLoopReport?: unknown;
+    approvedPatchSet?: unknown;
+    branchPush?: unknown;
+}
+
+export interface ApprovedPatchSubTask {
+    subTaskId: string;
+    domain: ExecutionSubTask['domain'];
+    agent: ExecutionSubTask['agent'];
+    generator: string;
+    reviewer: string;
+    iterations: number;
+    reviewerNotes: string[];
+    filesChanged: string[];
+    commitSha: string;
+    patch: string;
+}
+
+export interface ApprovedPatchSet {
+    patchSetRef: string;
+    runId: string;
+    planId?: string;
+    branchName: string;
+    baseCommit: string;
+    headCommit: string;
+    createdAt: string;
+    subTasks: ApprovedPatchSubTask[];
+    patch: string;
+}
+
+export interface BranchPushResult {
+    remote: string;
+    branchName: string;
+    headCommit: string;
+    pushed: boolean;
 }
 
 export interface ExecuteDispatch {
     runRef: string;
-    engine: 'stub' | 'openclaw' | 'docker';
+    engine: 'stub' | 'openclaw' | 'docker' | 'agent-runner';
     accepted: boolean;
 }
 
