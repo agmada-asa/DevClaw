@@ -2,14 +2,13 @@ import axios from 'axios';
 
 export type Channel = 'telegram' | 'whatsapp';
 
-// Resolves the internal HTTP URL for a given channel's bot.
-// Each bot runs an Express server with a POST /api/send endpoint that
-// accepts { chatId, message } and forwards the message to the user.
-function botUrlForChannel(channel: Channel): string | undefined {
-  if (channel === 'telegram') return process.env.TELEGRAM_BOT_URL;
-  if (channel === 'whatsapp') return process.env.WHATSAPP_BOT_URL;
-  return undefined;
-}
+// Maps each channel to its bot's internal HTTP URL env var.
+// Each bot runs an Express server with POST /api/send that accepts { chatId, message }.
+// Adding a new channel: add it to the Channel union in types.ts and add an entry here.
+const BOT_URL: Record<Channel, string | undefined> = {
+  telegram: process.env.TELEGRAM_BOT_URL,
+  whatsapp: process.env.WHATSAPP_BOT_URL,
+};
 
 // Sends any message to a user on their messaging platform.
 // Used both for approval cards (orchestrator) and change summaries (agent-runner).
@@ -27,7 +26,7 @@ export async function sendToUser(
   chatId: string,
   message: string,
 ): Promise<boolean> {
-  const botUrl = botUrlForChannel(channel);
+  const botUrl = BOT_URL[channel];
 
   if (!botUrl) {
     console.warn(
