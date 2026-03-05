@@ -55,8 +55,13 @@ export async function sendToUser(
     return false;
   }
 
+  const safeMessage = truncate(message, channel);
+  if (safeMessage !== message) {
+    console.warn(`[notifier] Message to ${channel} chat ${chatId} was truncated to ${MAX_LENGTH[channel]} chars.`);
+  }
+
   try {
-    await axios.post(`${botUrl}/api/send`, { chatId, message });
+    await axios.post(`${botUrl}/api/send`, { chatId, message: safeMessage });
     console.log(`[notifier] Sent message to ${channel} chat ${chatId}`);
     return true;
   } catch (err: any) {
