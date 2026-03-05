@@ -9,137 +9,9 @@
  * Fallback: when CEOCLAW_AGENT_ENGINE=direct, uses @devclaw/llm-router directly.
  */
 
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 import { chat } from '@devclaw/llm-router';
+import { runOpenClawPrompt, extractJsonObject, parseNumberEnv } from './openclawRunner';
 import { QualifyInput, QualificationResult, MessageInput, MessageResult } from './types';
-
-const execFileAsync = promisify(execFile);
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-const parseNumberEnv = (value: string | undefined, fallback: number): number => {
-    const parsed = Number(value);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-};
-
-const resolvePlannerRecipient = (): string => {
-    const gatewayTo = process.env.OPENCLAW_GATEWAY_TO;
-    if (typeof gatewayTo === 'string' && gatewayTo.trim()) return gatewayTo.trim();
-    const localTo = process.env.OPENCLAW_LOCAL_TO;
-    if (typeof localTo === 'string' && localTo.trim()) return localTo.trim();
-    return '+15555550123';
-};
-
-const extractJsonObject = (text: string): string | null => {
-    const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (fenceMatch?.[1]) return fenceMatch[1].trim();
-    const start = text.indexOf('{');
-    const end = text.lastIndexOf('}');
-    if (start !== -1 && end > start) return text.slice(start, end + 1).trim();
-    return null;
-};
-
-const collectTextFields = (value: unknown, output: string[]): void => {
-    if (typeof value === 'string') return;
-    if (Array.isArray(value)) { value.forEach((item) => collectTextFields(item, output)); return; }
-    if (!value || typeof value !== 'object') return;
-    const record = value as Record<string, unknown>;
-    const text = record.text;
-    if (typeof text === 'string' && text.trim()) output.push(text.trim());
-    for (const entry of Object.values(record)) collectTextFields(entry, output);
-};
-
-const extractTextFromCliOutput = (stdout: string): string => {
-    const raw = stdout.trim();
-    if (!raw) throw new Error('OpenClaw CLI returned empty stdout');
-
-    let parsed: any;
-    try {
-        parsed = JSON.parse(raw);
-    } catch {
-        const embedded = extractJsonObject(raw);
-        if (!embedded) throw new Error('OpenClaw CLI stdout is not JSON');
-        parsed = JSON.parse(embedded);
-    }
-
-    const textFields: string[] = [];
-    collectTextFields(parsed, textFields);
-    if (textFields.length === 0) throw new Error('OpenClaw CLI JSON did not contain any text payload');
-    return textFields.join('\n');
-};
-
-// ─── OpenClaw CLI invocation ──────────────────────────────────────────────────
-
-const runGatewayAgentPrompt = async (prompt: string): Promise<string> => {
-    const cliBin = process.env.OPENCLAW_CLI_BIN || 'openclaw';
-    const timeoutMs = parseNumberEnv(process.env.OPENCLAW_CLI_TIMEOUT_MS, 2 * 60 * 1000);
-    const params = {
-        message: prompt,
-        to: resolvePlannerRecipient(),
-        timeout: Math.max(1, Math.ceil(timeoutMs / 1000)),
-        idempotencyKey: `ceoclaw-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`,
-    };
-    const args = [
-        'gateway', 'call', 'agent',
-        '--json', '--expect-final',
-        '--timeout', String(timeoutMs),
-        '--params', JSON.stringify(params),
-    ];
-    if (process.env.OPENCLAW_GATEWAY_URL) args.push('--url', process.env.OPENCLAW_GATEWAY_URL);
-    if (process.env.OPENCLAW_GATEWAY_TOKEN) args.push('--token', process.env.OPENCLAW_GATEWAY_TOKEN);
-
-    try {
-        const { stdout, stderr } = await execFileAsync(cliBin, args, {
-            timeout: timeoutMs + 5000,
-            maxBuffer: 8 * 1024 * 1024,
-        });
-        if (typeof stderr === 'string' && stderr.trim()) {
-            console.warn('[CEOClaw] OpenClaw CLI stderr:', stderr.trim());
-        }
-        return extractTextFromCliOutput(stdout);
-    } catch (err: any) {
-        const stderr = typeof err?.stderr === 'string' ? err.stderr.trim() : '';
-        const stdout = typeof err?.stdout === 'string' ? err.stdout.trim() : '';
-        const detail = stderr || stdout || err?.message || 'unknown OpenClaw error';
-        throw new Error(`OpenClaw CLI invocation failed: ${detail}`);
-    }
-};
-
-const runLocalAgentPrompt = async (prompt: string): Promise<string> => {
-    const cliBin = process.env.OPENCLAW_CLI_BIN || 'openclaw';
-    const timeoutMs = parseNumberEnv(process.env.OPENCLAW_CLI_TIMEOUT_MS, 2 * 60 * 1000);
-    const to = process.env.OPENCLAW_LOCAL_TO || '+15555550123';
-    const args = [
-        'agent', '--local', '--json',
-        '--to', to,
-        '--timeout', String(Math.max(1, Math.ceil(timeoutMs / 1000))),
-        '--message', prompt,
-    ];
-
-    try {
-        const { stdout, stderr } = await execFileAsync(cliBin, args, {
-            timeout: timeoutMs + 10000,
-            maxBuffer: 8 * 1024 * 1024,
-        });
-        if (typeof stderr === 'string' && stderr.trim()) {
-            console.warn('[CEOClaw] OpenClaw local stderr:', stderr.trim());
-        }
-        return extractTextFromCliOutput(stdout);
-    } catch (err: any) {
-        const stderr = typeof err?.stderr === 'string' ? err.stderr.trim() : '';
-        const stdout = typeof err?.stdout === 'string' ? err.stdout.trim() : '';
-        const detail = stderr || stdout || err?.message || 'unknown OpenClaw local error';
-        throw new Error(`OpenClaw local invocation failed: ${detail}`);
-    }
-};
-
-const runOpenClawPrompt = async (prompt: string): Promise<string> => {
-    const mode = (process.env.OPENCLAW_CLI_MODE || 'gateway').toLowerCase();
-    return mode === 'agent-local'
-        ? runLocalAgentPrompt(prompt)
-        : runGatewayAgentPrompt(prompt);
-};
 
 // ─── Qualification ────────────────────────────────────────────────────────────
 
@@ -260,6 +132,8 @@ const generateMessageDirect = async (input: MessageInput): Promise<MessageResult
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
+const timeoutMs = parseNumberEnv(process.env.OPENCLAW_CLI_TIMEOUT_MS, 2 * 60 * 1000);
+
 export const qualifyProspect = async (input: QualifyInput): Promise<QualificationResult> => {
     const engine = (process.env.CEOCLAW_AGENT_ENGINE || 'openclaw').toLowerCase();
     if (engine === 'direct') {
@@ -268,8 +142,7 @@ export const qualifyProspect = async (input: QualifyInput): Promise<Qualificatio
     }
 
     console.log(`[CEOClaw] Qualifying prospect ${input.prospectId} via OpenClaw CLI`);
-    const prompt = buildQualifyPrompt(input);
-    const raw = await runOpenClawPrompt(prompt);
+    const raw = await runOpenClawPrompt(buildQualifyPrompt(input), { timeoutMs });
     return parseQualificationResult(raw);
 };
 
@@ -281,7 +154,6 @@ export const generateOutreachMessage = async (input: MessageInput): Promise<Mess
     }
 
     console.log(`[CEOClaw] Generating message for prospect ${input.prospectId} via OpenClaw CLI`);
-    const prompt = buildMessagePrompt(input);
-    const raw = await runOpenClawPrompt(prompt);
+    const raw = await runOpenClawPrompt(buildMessagePrompt(input), { timeoutMs });
     return parseMessageResult(raw);
 };
