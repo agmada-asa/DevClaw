@@ -64,7 +64,7 @@ chmod +x deploy.sh
 ./deploy.sh
 ```
 
-### Post-Deployment Monitoring
+### Post-Deployment Monitoring & Finalizing Bot Setup
 To verify that everything successfully deployed and is running without exceptions, you can remote into your server and inspect PM2:
 
 ```bash
@@ -77,3 +77,16 @@ pm2 status
 # Tail the combined logs for all services
 pm2 logs
 ```
+
+#### WhatsApp Bot First-Time Setup
+If this is your first time deploying the WhatsApp bot to this server, you **must link your device via QR Code**. The bot will appear "online" in PM2, but it will be paused in the background waiting for a scan.
+
+To complete the setup:
+1. SSH into the server using `ssh root@104.248.173.95`.
+2. View the explicit output of the WhatsApp bot by running:
+   ```bash
+   pm2 logs whatsapp-bot --lines 100
+   ```
+3. A large QR code will render in your terminal output.
+4. Open WhatsApp on your phone, go to **Settings -> Linked Devices -> Link a Device**, and scan the QR code on your screen.
+5. The bot will automatically authenticate, save its session data to the Droplet, and begin processing messages. You only need to do this step once.
