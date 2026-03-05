@@ -49,7 +49,7 @@ const LINKS = [
 
 export default function LinksPage({ onBack }: Props) {
   return (
-    <div className="min-h-screen bg-[#0A0A0A] flex flex-col items-center justify-center px-6 py-16">
+    <div className="h-screen bg-[#0A0A0A] flex flex-col items-center justify-center px-6 py-8 overflow-hidden">
 
       {/* Back button */}
       <button
@@ -63,7 +63,7 @@ export default function LinksPage({ onBack }: Props) {
       </button>
 
       {/* Header */}
-      <div className="flex flex-col items-center gap-3 mb-12">
+      <div className="flex flex-col items-center gap-3 mb-6">
         <div className="w-14 h-14 bg-red-brand rounded-2xl flex items-center justify-center shadow-lg shadow-red-brand/40">
           <span className="text-white font-black font-mono text-xl">DC</span>
         </div>
@@ -98,7 +98,7 @@ export default function LinksPage({ onBack }: Props) {
         ))}
       </div>
 
-      <p className="mt-12 text-xs text-white/20 text-center">
+      <p className="mt-6 text-xs text-white/20 text-center">
         Built at UK AI Agent Hack EP4 · OpenClaw × DevClaw
       </p>
     </div>
