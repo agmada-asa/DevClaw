@@ -83,93 +83,69 @@ const loginToLinkedIn = async (page: Page, email: string, password: string): Pro
 
 // ─── Profile Extraction ───────────────────────────────────────────────────────
 
-const extractConnectionDegree = (cardText: string): RawProspect['connectionDegree'] => {
-    if (cardText.includes('1st')) return '1st';
-    if (cardText.includes('2nd')) return '2nd';
-    return '3rd+';
-};
+// Extract all prospect cards from the current search page in a single fast evaluate() call.
+// Using page.evaluate() avoids Playwright's smart-waiting on individual locators which can hang.
+const extractProspectsFromPage = async (page: Page): Promise<RawProspect[]> => {
+    const LINKEDIN_BASE_URL = LINKEDIN_BASE;
+    return page.evaluate((base) => {
+        const CARD_SELECTOR = '[data-chameleon-result-urn], li.reusable-search__result-item, div.entity-result';
+        const cards = Array.from(document.querySelectorAll(CARD_SELECTOR));
+        const results: any[] = [];
 
-const extractProspectFromCard = async (
-    page: Page,
-    cardLocator: any
-): Promise<RawProspect | null> => {
-    try {
-        const cardText = await cardLocator.innerText().catch(() => '');
+        for (const card of cards) {
+            try {
+                // Profile URL
+                const profileLink = card.querySelector('a[href*="/in/"]') as HTMLAnchorElement | null;
+                if (!profileLink) continue;
+                const rawHref = profileLink.getAttribute('href') || '';
+                const cleanHref = rawHref.split('?')[0];
+                const profileUrl = cleanHref.startsWith('http') ? cleanHref : base + cleanHref;
+                if (!profileUrl.includes('/in/')) continue;
 
-        // Profile URL — the name is always a link to the profile
-        const profileLink = cardLocator.locator('a[href*="/in/"]').first();
-        const profileHref = await profileLink.getAttribute('href').catch(() => null);
-        if (!profileHref) return null;
+                // Name — try old classes then new aria-hidden span
+                const nameEl =
+                    card.querySelector('span.entity-result__title-text') ||
+                    card.querySelector('.artdeco-entity-lockup__title') ||
+                    card.querySelector('span[aria-hidden="true"]');
+                const fullName = nameEl?.textContent?.trim() || '';
+                if (!fullName) continue;
+                const nameParts = fullName.split(' ');
+                const firstName = nameParts[0] || '';
+                const lastName = nameParts.slice(1).join(' ') || '';
 
-        const profileUrl = profileHref.split('?')[0].startsWith('http')
-            ? profileHref.split('?')[0]
-            : `${LINKEDIN_BASE}${profileHref.split('?')[0]}`;
+                // Title — old class or new "t-14 t-black" leaf div
+                const titleEl =
+                    card.querySelector('.entity-result__primary-subtitle') ||
+                    card.querySelector('.artdeco-entity-lockup__subtitle') ||
+                    card.querySelector('div[class*="t-14 t-black"]');
+                const title = titleEl?.textContent?.trim() || '';
 
-        // Name — try multiple selectors in order of specificity
-        let fullName = '';
-        const nameSelectors = [
-            'span.entity-result__title-text',
-            '.artdeco-entity-lockup__title',
-            'span[aria-hidden="true"]',
-        ];
-        for (const sel of nameSelectors) {
-            const el = cardLocator.locator(sel).first();
-            const text = await el.innerText().catch(() => '');
-            if (text.trim()) { fullName = text.trim(); break; }
+                // Company — old class only (new LinkedIn embeds company in title)
+                const companyEl =
+                    card.querySelector('.entity-result__secondary-subtitle') ||
+                    card.querySelector('.artdeco-entity-lockup__caption');
+                const companyName = companyEl?.textContent?.trim().split('\n')[0] || '';
+
+                // Location — old class or new "t-14 t-normal" div
+                const locationEl =
+                    card.querySelector('.entity-result__location') ||
+                    card.querySelector('.artdeco-entity-lockup__metadata') ||
+                    card.querySelector('div[class*="t-14 t-normal"]');
+                const location = locationEl?.textContent?.trim() || '';
+
+                // Connection degree from card text
+                const cardText = card.textContent || '';
+                const connectionDegree: '1st' | '2nd' | '3rd+' =
+                    cardText.includes('1st') ? '1st' :
+                    cardText.includes('2nd') ? '2nd' : '3rd+';
+
+                results.push({ firstName, lastName, title, companyName, linkedinProfileUrl: profileUrl, location: location || undefined, connectionDegree });
+            } catch {
+                // skip malformed cards
+            }
         }
-        if (!fullName) return null;
-
-        const nameParts = fullName.split(' ');
-        const firstName = nameParts[0] || '';
-        const lastName = nameParts.slice(1).join(' ') || '';
-
-        // Title & Company
-        let title = '';
-        let companyName = '';
-        const subtitleSelectors = [
-            '.entity-result__primary-subtitle',
-            '.artdeco-entity-lockup__subtitle',
-        ];
-        for (const sel of subtitleSelectors) {
-            const el = cardLocator.locator(sel).first();
-            const text = await el.innerText().catch(() => '');
-            if (text.trim()) { title = text.trim(); break; }
-        }
-
-        const secondarySelectors = [
-            '.entity-result__secondary-subtitle',
-            '.artdeco-entity-lockup__caption',
-        ];
-        for (const sel of secondarySelectors) {
-            const el = cardLocator.locator(sel).first();
-            const text = await el.innerText().catch(() => '');
-            if (text.trim()) { companyName = text.trim().split('\n')[0]; break; }
-        }
-
-        // Location
-        let location = '';
-        const locationSelectors = ['.entity-result__location', '.artdeco-entity-lockup__metadata'];
-        for (const sel of locationSelectors) {
-            const el = cardLocator.locator(sel).first();
-            const text = await el.innerText().catch(() => '');
-            if (text.trim()) { location = text.trim(); break; }
-        }
-
-        if (!firstName) return null;
-
-        return {
-            firstName,
-            lastName,
-            title,
-            companyName,
-            linkedinProfileUrl: profileUrl,
-            location: location || undefined,
-            connectionDegree: extractConnectionDegree(cardText),
-        };
-    } catch (err: any) {
-        console.warn('[LinkedInProspector] Failed to extract card:', err.message);
-        return null;
-    }
+        return results;
+    }, LINKEDIN_BASE_URL);
 };
 
 // ─── Search ───────────────────────────────────────────────────────────────────
@@ -184,15 +160,14 @@ const scrapeSearchPage = async (
     searchUrl: string,
     delayMs: number
 ): Promise<RawProspect[]> => {
-    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    // LinkedIn may interrupt navigation with service worker — ignore that error
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => {});
     await sleep(jitter(delayMs));
 
-    // Wait for results to load
+    // Wait for results to load (LinkedIn updated to use data-chameleon-result-urn)
+    const CARD_SELECTOR = '[data-chameleon-result-urn], li.reusable-search__result-item, div.entity-result';
     try {
-        await page.waitForSelector(
-            'li.reusable-search__result-item, div.entity-result',
-            { timeout: 15_000 }
-        );
+        await page.waitForSelector(CARD_SELECTOR, { timeout: 15_000 });
     } catch {
         console.warn('[LinkedInProspector] No results found on page, skipping.');
         return [];
@@ -204,19 +179,9 @@ const scrapeSearchPage = async (
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
     await sleep(jitter(1000));
 
-    const cardLocators = page.locator(
-        'li.reusable-search__result-item, div.entity-result'
-    );
-    const count = await cardLocators.count();
-    console.log(`[LinkedInProspector] Found ${count} cards on page`);
-
-    const prospects: RawProspect[] = [];
-    for (let i = 0; i < count; i++) {
-        const card = cardLocators.nth(i);
-        const prospect = await extractProspectFromCard(page, card);
-        if (prospect) prospects.push(prospect);
-        await sleep(jitter(200));
-    }
+    // Extract all cards at once using fast DOM evaluate (avoids Playwright locator timeouts)
+    const prospects = await extractProspectsFromPage(page);
+    console.log(`[LinkedInProspector] Found ${prospects.length} cards on page`);
 
     return prospects;
 };

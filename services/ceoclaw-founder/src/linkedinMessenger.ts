@@ -40,36 +40,58 @@ const loadSessionCookies = async (sessionPath: string): Promise<object[] | null>
 const sendConnectionRequest = async (
     page: Page,
     profileUrl: string,
-    note: string
+    note: string,
+    firstName?: string
 ): Promise<boolean> => {
     const truncatedNote = note.slice(0, CONNECTION_NOTE_LIMIT);
 
     try {
-        await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+        await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => {});
         await sleep(jitter(2000));
 
-        // Try to find the Connect button in the main action area
-        const connectSelectors = [
-            'button[aria-label*="Connect"]',
-            'button:has-text("Connect")',
-            '.pvs-profile-actions button:has-text("Connect")',
-        ];
+        // Inspect what action buttons are available on this profile (fast DOM query)
+        const pageButtons = await page.evaluate(() => {
+            return Array.from(document.querySelectorAll('button'))
+                .slice(0, 20)
+                .map(b => ({ text: (b.textContent || '').trim(), aria: b.getAttribute('aria-label') || '' }));
+        });
 
-        let connected = false;
-        for (const sel of connectSelectors) {
-            const btn = page.locator(sel).first();
-            const visible = await btn.isVisible({ timeout: 3000 }).catch(() => false);
-            if (!visible) continue;
-
-            await btn.click();
-            await sleep(jitter(1000));
-            connected = true;
-            break;
+        // Check if this profile only has "Follow" (no Connect available — influencer/creator)
+        const mainButtons = pageButtons.slice(5, 12); // profile action buttons start ~index 6
+        const hasFollow = mainButtons.some(b => b.aria.startsWith('Follow '));
+        const hasConnect = mainButtons.some(b => b.aria.includes('Invite') && b.aria.includes('connect'));
+        if (hasFollow && !hasConnect) {
+            console.warn(`[LinkedInMessenger] ${profileUrl} only has Follow button — skipping (influencer/creator profile)`);
+            return false;
         }
 
+        let connected = false;
+
+        // 1. Try name-specific selector first: "Invite [FirstName] to connect" — most reliable
+        if (firstName) {
+            const nameBtn = page.locator(`button[aria-label*="Invite ${firstName}"]`).first();
+            const visible = await nameBtn.isVisible({ timeout: 3000 }).catch(() => false);
+            if (visible) {
+                await nameBtn.click();
+                await sleep(jitter(1000));
+                connected = true;
+            }
+        }
+
+        // 2. Any "Invite … to connect" button (avoids matching sidebar Follow buttons)
         if (!connected) {
-            // Connect may be behind a "More" dropdown
-            const moreBtn = page.locator('button[aria-label*="More actions"]').first();
+            const inviteBtn = page.locator('button[aria-label*="Invite"][aria-label*="connect"]').first();
+            const visible = await inviteBtn.isVisible({ timeout: 3000 }).catch(() => false);
+            if (visible) {
+                await inviteBtn.click();
+                await sleep(jitter(1000));
+                connected = true;
+            }
+        }
+
+        // 3. Connect may be behind a "More actions" dropdown
+        if (!connected) {
+            const moreBtn = page.locator('button[aria-label*="More actions"], button[aria-label*="more actions"]').first();
             const moreVisible = await moreBtn.isVisible({ timeout: 3000 }).catch(() => false);
             if (moreVisible) {
                 await moreBtn.click();
@@ -169,6 +191,8 @@ export interface OutreachTarget {
     prospectId: string;
     profileUrl: string;
     message: string;
+    firstName?: string;
+    lastName?: string;
     connectionDegree?: '1st' | '2nd' | '3rd+';
 }
 
@@ -244,7 +268,7 @@ export const sendOutreachBatch = async (
                     sent = await sendDirectMessage(page, target.profileUrl, target.message);
                     method = 'direct_message';
                 } else {
-                    sent = await sendConnectionRequest(page, target.profileUrl, target.message);
+                    sent = await sendConnectionRequest(page, target.profileUrl, target.message, target.firstName);
                     method = 'connection_request';
                 }
 
