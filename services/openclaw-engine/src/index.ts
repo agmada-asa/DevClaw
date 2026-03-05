@@ -1,12 +1,13 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
 import { getOpenClawPlanningEngine } from './openclawPlanningEngine';
 import { getPlanStore } from './planStore';
 import { OpenClawPlanRecord } from './types';
 import { getExecutionDispatcher } from './executionDispatcher';
 
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const app = express();
 const port = process.env.PORT || 3040;
@@ -85,7 +86,7 @@ app.get('/health', (_req: Request, res: Response) => {
  * initial blueprint for a task.
  */
 app.post('/api/plan', async (req: Request, res: Response): Promise<any> => {
-    const { requestId, userId, repo, description, issueNumber, source } = req.body || {};
+    const { requestId, userId, repo, description, issueNumber, source, repoFileTree } = req.body || {};
 
     if (!requestId || !userId || !repo || !description) {
         return res.status(400).json({
@@ -100,6 +101,7 @@ app.post('/api/plan', async (req: Request, res: Response): Promise<any> => {
             repo: String(repo),
             description: String(description),
             issueNumber: typeof issueNumber === 'number' ? issueNumber : undefined,
+            repoFileTree: Array.isArray(repoFileTree) ? repoFileTree : undefined,
         });
 
         const saved = await planStore.saveNewPlan({

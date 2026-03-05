@@ -2,10 +2,11 @@ import express, { Request, Response } from 'express';
 import crypto from 'crypto';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
 import { createClient } from '@supabase/supabase-js';
 import axios from 'axios';
 
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const app = express();
 const port = process.env.PORT || 3001;
