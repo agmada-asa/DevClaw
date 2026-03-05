@@ -1,5 +1,6 @@
 {
-  "buildCommand": "cd apps/landing-page && npm install && npm run build",
-  "outputDirectory": "apps/landing-page/dist",
-  "installCommand": "echo skip"
+  "rootDirectory": "apps/landing-page",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "installCommand": "npm install"
 }
