@@ -4,7 +4,8 @@ import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 import { createOrDedupeIssue } from './githubClient';
-import { sendToUser, Channel } from './notifier';
+import { sendToUser } from './notifier';
+import { Channel } from './types';
 
 dotenv.config();
 
