@@ -54,6 +54,61 @@ const GATEWAY_ORCHESTRATOR_REFINE_TIMEOUT_MS = parsePositiveInt(
     20 * 60 * 1000
 );
 
+const getOrchestratorBaseUrls = (): string[] => {
+    const primaryUrl = process.env.ORCHESTRATOR_URL || 'http://localhost:3010';
+    const candidates = [primaryUrl];
+
+    try {
+        const parsed = new URL(primaryUrl);
+        if (parsed.hostname === 'host.docker.internal') {
+            const localhostUrl = new URL(primaryUrl);
+            localhostUrl.hostname = 'localhost';
+            candidates.push(localhostUrl.toString().replace(/\/$/, ''));
+
+            const loopbackUrl = new URL(primaryUrl);
+            loopbackUrl.hostname = '127.0.0.1';
+            candidates.push(loopbackUrl.toString().replace(/\/$/, ''));
+        }
+    } catch {
+        // Keep the primary URL only if parsing fails.
+    }
+
+    return Array.from(new Set(candidates.map((url) => url.replace(/\/$/, ''))));
+};
+
+const isRetryableOrchestratorNetworkError = (error: any): boolean => {
+    const code = error?.code;
+    return code === 'ENOTFOUND' || code === 'EAI_AGAIN' || code === 'ECONNREFUSED' || code === 'ETIMEDOUT';
+};
+
+const postToOrchestrator = async <T>(
+    endpointPath: string,
+    body: unknown,
+    timeoutMs: number
+): Promise<T> => {
+    const urls = getOrchestratorBaseUrls();
+    let lastError: any;
+
+    for (let index = 0; index < urls.length; index += 1) {
+        const baseUrl = urls[index];
+        const requestUrl = `${baseUrl}${endpointPath}`;
+
+        try {
+            const response = await axios.post<T>(requestUrl, body, { timeout: timeoutMs });
+            return response.data;
+        } catch (error: any) {
+            lastError = error;
+            const hasNext = index < urls.length - 1;
+            if (!hasNext || !isRetryableOrchestratorNetworkError(error)) {
+                break;
+            }
+            console.warn(`[Gateway] Orchestrator request failed via ${baseUrl} (${error.code || error.message}). Retrying with fallback URL...`);
+        }
+    }
+
+    throw lastError;
+};
+
 // OAuth Init Endpoint
 app.get('/api/auth/github', (req: Request, res: Response): any => {
     const userId = req.query.userId as string;
@@ -286,16 +341,13 @@ app.post('/api/ingress/message', async (req: Request, res: Response): Promise<an
         }
         const planId = parts[1].trim();
 
-        const orchestratorUrl = process.env.ORCHESTRATOR_URL || 'http://localhost:3010';
         try {
             console.log(`[Gateway] Dispatching ${payload.type} for plan ${planId}`);
             const timeoutMs = payload.type === 'approve'
                 ? GATEWAY_ORCHESTRATOR_APPROVE_TIMEOUT_MS
                 : GATEWAY_ORCHESTRATOR_REJECT_TIMEOUT_MS;
-            const orchResponse = await axios.post(`${orchestratorUrl}/api/${payload.type}`, { planId }, {
-                timeout: timeoutMs,
-            });
-            return res.status(200).json(orchResponse.data);
+            const orchResponse = await postToOrchestrator(`/api/${payload.type}`, { planId }, timeoutMs);
+            return res.status(200).json(orchResponse);
         } catch (err: any) {
             const detail = err.response?.data?.error || err.message;
             console.error(`[Gateway] Orchestrator ${payload.type} failed:`, detail);
@@ -314,19 +366,16 @@ app.post('/api/ingress/message', async (req: Request, res: Response): Promise<an
         const planId = parts[1].trim();
         const refinement = parts.slice(2).join(' ').trim();
 
-        const orchestratorUrl = process.env.ORCHESTRATOR_URL || 'http://localhost:3010';
         try {
             console.log(`[Gateway] Dispatching refine for plan ${planId}`);
-            const orchResponse = await axios.post(`${orchestratorUrl}/api/refine`, {
+            const orchResponse = await postToOrchestrator('/api/refine', {
                 planId,
                 refinement,
                 userId,
                 channel: provider,
                 chatId: payload.chatId ? payload.chatId.toString() : ''
-            }, {
-                timeout: GATEWAY_ORCHESTRATOR_REFINE_TIMEOUT_MS,
-            });
-            return res.status(200).json(orchResponse.data);
+            }, GATEWAY_ORCHESTRATOR_REFINE_TIMEOUT_MS);
+            return res.status(200).json(orchResponse);
         } catch (err: any) {
             const detail = err.response?.data?.error || err.message;
             console.error('[Gateway] Orchestrator refine failed:', detail);
@@ -384,7 +433,6 @@ app.post('/api/ingress/message', async (req: Request, res: Response): Promise<an
         }
 
         // ── Dispatch to orchestrator ──────────────────────────────────────────
-        const orchestratorUrl = process.env.ORCHESTRATOR_URL || 'http://localhost:3010';
         const repoParts = userPrefs.github_repo.split('/');
         const intakePayload: import('@devclaw/contracts').IntakeRequest = {
             requestId: crypto.randomUUID(),
@@ -401,10 +449,8 @@ app.post('/api/ingress/message', async (req: Request, res: Response): Promise<an
 
         try {
             console.log(`[Gateway] Dispatching task to orchestrator for repo ${userPrefs.github_repo}`);
-            const orchResponse = await axios.post(`${orchestratorUrl}/api/task`, intakePayload, {
-                timeout: GATEWAY_ORCHESTRATOR_TASK_TIMEOUT_MS,
-            });
-            return res.status(200).json(orchResponse.data);
+            const orchResponse = await postToOrchestrator('/api/task', intakePayload, GATEWAY_ORCHESTRATOR_TASK_TIMEOUT_MS);
+            return res.status(200).json(orchResponse);
         } catch (err: any) {
             const status = err.response?.status;
             const detail = err.response?.data?.error || err.message;
