@@ -15,6 +15,19 @@ if (!BOT_TOKEN) {
 
 const bot = new Telegraf(BOT_TOKEN);
 
+const sleep = (ms: number): Promise<void> =>
+    new Promise((resolve) => setTimeout(resolve, ms));
+
+const isPollingConflictError = (error: unknown): boolean => {
+    const message =
+        error instanceof Error
+            ? error.message
+            : typeof error === 'string'
+                ? error
+                : '';
+    return message.includes('409') && message.toLowerCase().includes('getupdates');
+};
+
 const parsePositiveInt = (value: string | undefined, fallback: number): number => {
     const parsed = Number.parseInt(value || '', 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -211,13 +224,48 @@ if (require.main === module) {
         console.log(`[Telegram] Internal HTTP server listening on port ${BOT_HTTP_PORT}`);
     });
 
-    bot.launch().then(() => {
-        console.log('[Telegram] Bot started.');
-    }).catch((err) => {
-        console.error('[Telegram] Failed to start bot:', err.message);
-        if (err.message.includes('ECONNRESET') || err.message.includes('ETIMEDOUT') || err.message.includes('ECONNREFUSED')) {
-            console.error('[Telegram] 🚨 Network Error: Cannot reach api.telegram.org. If you are in a restricted region, please ensure your system proxy or VPN is running.');
+    const launchBot = async (): Promise<void> => {
+        try {
+            await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+            console.log('[Telegram] Cleared webhook and switched to polling mode.');
+        } catch (err: any) {
+            console.warn('[Telegram] Could not clear webhook before launch:', err?.message || err);
         }
+
+        try {
+            await bot.launch();
+            console.log('[Telegram] Bot started.');
+            return;
+        } catch (err: any) {
+            console.error('[Telegram] Failed to start bot:', err?.message || err);
+            if (isPollingConflictError(err)) {
+                console.warn('[Telegram] 409 conflict detected. Retrying once in 5s after clearing webhook state...');
+                await sleep(5000);
+                try {
+                    await bot.telegram.deleteWebhook({ drop_pending_updates: true });
+                } catch (retryWebhookErr: any) {
+                    console.warn('[Telegram] Retry webhook clear failed:', retryWebhookErr?.message || retryWebhookErr);
+                }
+
+                try {
+                    await bot.launch();
+                    console.log('[Telegram] Bot started on retry.');
+                    return;
+                } catch (retryErr: any) {
+                    console.error('[Telegram] Retry start failed:', retryErr?.message || retryErr);
+                    console.error('[Telegram] Ensure exactly one telegram-bot process is running and old pollers are stopped.');
+                }
+            }
+
+            const message = err?.message || '';
+            if (message.includes('ECONNRESET') || message.includes('ETIMEDOUT') || message.includes('ECONNREFUSED')) {
+                console.error('[Telegram] 🚨 Network Error: Cannot reach api.telegram.org. If you are in a restricted region, please ensure your system proxy or VPN is running.');
+            }
+        }
+    };
+
+    launchBot().catch((err) => {
+        console.error('[Telegram] Unexpected startup failure:', err);
     });
 
     // Enable graceful stop

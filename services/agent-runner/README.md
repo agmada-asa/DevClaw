@@ -1,17 +1,24 @@
 # agent-runner
 
 ## Purpose
-Dispatches approved plans to an execution backend and runs paired generator/reviewer loops per execution subtask.
+Executes approved plans against orchestrator-provided isolated workspaces, routes subtasks by domain-specific generator/reviewer pairs, and returns an approved patch set.
 
 ## Endpoints
 - `GET /health`
-- `POST /api/execute`
+- `POST /api/execute`:
+  - runs frontend/backend subtasks inside the isolated workspace branch,
+  - rewrites target files directly from generator output (with patch fallback),
+  - commits and pushes the execution branch,
+  - returns `approvedPatchSet` + `branchPush` metadata.
 
 ## Agent Pairing
 - `FrontendAgentFactory` builds `FrontendGenerator` + `FrontendReviewer`.
 - `BackendAgentFactory` builds `BackendGenerator` + `BackendReviewer`.
 - Agent loop retries are controlled via `RUNNER_AGENT_LOOP_MAX_ITERATIONS` (default: `3`).
 - Set `RUNNER_AGENT_LOOP_ENABLED=false` to disable loop execution.
+- File context passed to agents is capped by:
+  - `RUNNER_AGENT_FILE_CONTEXT_MAX_CHARS` (default: `8000`)
+  - `RUNNER_AGENT_FILE_CONTEXT_MAX_FILES` (default: `10`)
 
 ### LLM Routing
 - Frontend/Backend `Generator` roles route to FLock DeepSeek V3.2.
@@ -39,3 +46,9 @@ Dispatches approved plans to an execution backend and runs paired generator/revi
 - `RUNNER_DOCKER_PIDS_LIMIT` (default: `512`)
 
 For Docker mode, orchestrator must provide `isolatedEnvironmentPath` so agent-runner can mount the cloned workspace to `/workspace` in the sandbox container.
+
+### Git/Branch Config
+- `RUNNER_GIT_USER_NAME` (default: `DevClaw Agent Runner`)
+- `RUNNER_GIT_USER_EMAIL` (default: `agent-runner@devclaw.local`)
+- `RUNNER_GIT_TIMEOUT_MS` (default: `600000`)
+- `RUNNER_GIT_PUSH_ENABLED` (default: `true`)

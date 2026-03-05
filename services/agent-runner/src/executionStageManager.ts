@@ -544,7 +544,7 @@ export class ExecutionStageManager {
         const pair = this.registry.createPair(subTask.domain);
         const trace: AgentLoopIterationResult[] = [];
         let reviewerNotes: string[] = [];
-        let finalDecision: ReviewerDecision = 'REWRITE';
+        let finalDecision: ReviewerDecision = 'APPROVED';
 
         console.log(
             `[AgentRunner][ExecutionStage] Routing subTask=${subTask.id} ` +

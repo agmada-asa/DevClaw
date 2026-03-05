@@ -25,8 +25,8 @@ export interface ModelConfig {
   policy: RolePolicy;
 }
 
-const GENERATOR_MODEL = process.env.GENERATOR_MODEL || 'deepseek-v3.2';
-const REVIEWER_MODEL = process.env.REVIEWER_MODEL || 'z-ai/glm-4.7-flash';
+const GENERATOR_MODEL = process.env.GENERATOR_MODEL || 'glm-4.6';
+const REVIEWER_MODEL = process.env.REVIEWER_MODEL || 'glm-4-flash';
 
 const GENERATOR_POLICY: RolePolicy = {
   timeoutMs: 1200_000,
@@ -45,7 +45,7 @@ const REVIEWER_POLICY: RolePolicy = {
 export const MODEL_CONFIG: Record<ModelRole, ModelConfig> = {
   // Legacy generator route, aligned with paired frontend/backend generators.
   generator: {
-    provider: 'flock',
+    provider: 'zai',
     modelId: GENERATOR_MODEL,
     policy: GENERATOR_POLICY,
   },
@@ -55,7 +55,7 @@ export const MODEL_CONFIG: Record<ModelRole, ModelConfig> = {
     provider: 'openrouter',
     modelId: REVIEWER_MODEL,
     fallback: {
-      provider: 'flock',
+      provider: 'zai',
       modelId: GENERATOR_MODEL,
     },
     policy: REVIEWER_POLICY,
@@ -63,7 +63,7 @@ export const MODEL_CONFIG: Record<ModelRole, ModelConfig> = {
 
   // Frontend generator is pinned to FLock DeepSeek V3.2.
   frontend_generator: {
-    provider: 'flock',
+    provider: 'zai',
     modelId: GENERATOR_MODEL,
     policy: GENERATOR_POLICY,
   },
@@ -73,7 +73,7 @@ export const MODEL_CONFIG: Record<ModelRole, ModelConfig> = {
     provider: 'openrouter',
     modelId: REVIEWER_MODEL,
     fallback: {
-      provider: 'flock',
+      provider: 'zai',
       modelId: GENERATOR_MODEL,
     },
     policy: REVIEWER_POLICY,
@@ -81,7 +81,7 @@ export const MODEL_CONFIG: Record<ModelRole, ModelConfig> = {
 
   // Backend generator is pinned to FLock DeepSeek V3.2.
   backend_generator: {
-    provider: 'flock',
+    provider: 'zai',
     modelId: GENERATOR_MODEL,
     policy: GENERATOR_POLICY,
   },
@@ -91,7 +91,7 @@ export const MODEL_CONFIG: Record<ModelRole, ModelConfig> = {
     provider: 'openrouter',
     modelId: REVIEWER_MODEL,
     fallback: {
-      provider: 'flock',
+      provider: 'zai',
       modelId: GENERATOR_MODEL,
     },
     policy: REVIEWER_POLICY,
@@ -99,8 +99,8 @@ export const MODEL_CONFIG: Record<ModelRole, ModelConfig> = {
 
   // Coordinates workflow — needs faster responses, one retry is enough.
   orchestrator: {
-    provider: 'flock',
-    modelId: 'deepseek-v3.2',
+    provider: 'zai',
+    modelId: 'glm-4.7',
     policy: {
       timeoutMs: 600_000,
       maxRetries: 1,

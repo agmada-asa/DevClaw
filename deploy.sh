@@ -58,6 +58,19 @@ ssh -o StrictHostKeyChecking=no $DROPLET_USER@$DROPLET_IP << 'EOF'
   echo "Building backend services..."
   npm run build:servers
 
+  if [ -f .env.production ]; then
+    echo "Loading environment from .env.production..."
+    set -a
+    . ./.env.production
+    set +a
+  else
+    echo "No .env.production found in /var/www/devclaw; relying on existing shell/PM2 environment variables."
+  fi
+
+  if [ -z "$TELEGRAM_BOT_TOKEN" ]; then
+    echo "WARNING: TELEGRAM_BOT_TOKEN is not set. telegram-bot will fail to start."
+  fi
+
   echo "Starting/Restarting services via PM2..."
   pm2 startOrReload ecosystem.config.js --update-env
 

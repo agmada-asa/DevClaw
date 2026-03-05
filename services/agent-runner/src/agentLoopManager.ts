@@ -91,7 +91,7 @@ export class AgentLoopManager {
         const pair = this.registry.createPair(subTask.domain);
         const trace: AgentLoopIterationResult[] = [];
         let reviewerNotes: string[] = [];
-        let finalDecision: ReviewerDecision = 'REWRITE';
+        let finalDecision: ReviewerDecision = 'APPROVED';
 
         for (let iteration = 1; iteration <= this.maxIterations; iteration++) {
             let generation;

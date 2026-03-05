@@ -37,7 +37,11 @@ module.exports = {
       script: 'apps/telegram-bot/dist/index.js',
       cwd: '/var/www/devclaw',
       env: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        TELEGRAM_BOT_TOKEN: process.env.TELEGRAM_BOT_TOKEN,
+        GATEWAY_URL: process.env.GATEWAY_URL || 'http://127.0.0.1:3001/api/ingress/message',
+        PUBLIC_URL: process.env.PUBLIC_URL,
+        BOT_HTTP_PORT: process.env.TELEGRAM_BOT_HTTP_PORT || process.env.BOT_HTTP_PORT || '3002'
       }
     },
     {
