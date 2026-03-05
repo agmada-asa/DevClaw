@@ -1,6 +1,7 @@
 import axios from 'axios';
+import { Channel } from './types';
 
-export type Channel = 'telegram' | 'whatsapp';
+export type { Channel };
 
 // Maps each channel to its bot's internal HTTP URL env var.
 // Each bot runs an Express server with POST /api/send that accepts { chatId, message }.
