@@ -435,6 +435,111 @@ app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
                 );
             }
             console.log(`[Orchestrator] Task ${updated.id} execution completed asynchronously.`);
+
+            // Attempt to mark the task run as completed in Supabase (best-effort).
+            if (supabase) {
+                try {
+                    const { error: completionError } = await supabase
+                        .from('task_runs')
+                        .update({ status: 'completed' })
+                        .eq('id', updated.id);
+                    if (completionError) {
+                        console.warn(
+                            '[Orchestrator] Could not update task_run status to completed:',
+                            completionError.message
+                        );
+                    }
+                } catch (dbErr: any) {
+                    console.warn(
+                        '[Orchestrator] Unexpected error while updating task_run status to completed:',
+                        dbErr?.message || dbErr
+                    );
+                }
+            }
+
+            // Send a summary back to the user with a link to the GitHub commit/branch.
+            if (updated.chat_id) {
+                const botUrl = resolveBotUrl(updated.channel);
+                if (botUrl) {
+                    const approvedPatchSet = execution.approvedPatchSet as any | undefined;
+                    const branchPush = execution.branchPush as any | undefined;
+
+                    const changedFiles: string[] = Array.from(
+                        new Set(
+                            (approvedPatchSet?.subTasks || [])
+                                .flatMap((st: any) => Array.isArray(st?.filesChanged) ? st.filesChanged : [])
+                                .filter((f: unknown): f is string => typeof f === 'string' && f.trim().length > 0)
+                        )
+                    ).slice(0, 50);
+
+                    const filesSection = changedFiles.length
+                        ? changedFiles.map((f) => `- \`${f}\``).join('\n')
+                        : '_Unknown — execution engine did not report specific files._';
+
+                    const repoFullName = typeof updated.repo === 'string' ? updated.repo : undefined;
+                    const headCommit = typeof branchPush?.headCommit === 'string' ? branchPush.headCommit : undefined;
+                    const branchName = typeof branchPush?.branchName === 'string' ? branchPush.branchName : undefined;
+
+                    const commitUrl =
+                        repoFullName && headCommit
+                            ? `https://github.com/${repoFullName}/commit/${headCommit}`
+                            : '';
+                    const branchUrl =
+                        repoFullName && branchName
+                            ? `https://github.com/${repoFullName}/tree/${branchName}`
+                            : '';
+
+                    const commitLine = commitUrl ? `🔗 *Latest commit:* ${commitUrl}` : '';
+                    const branchLine = branchUrl ? `🌿 *Execution branch:* ${branchUrl}` : '';
+
+                    const pushStatusLine =
+                        branchPush && branchPush.pushed === false
+                            ? '⚠️ I generated code changes but did not push a branch. You may need to apply the patch manually.'
+                            : '✅ All requested changes have been implemented and pushed to GitHub.';
+
+                    const engineLabel =
+                        execution.engine === 'openclaw'
+                            ? 'OpenClaw execution engine'
+                            : 'Agent Runner execution engine';
+
+                    const summaryLines = [
+                        `✅ Execution finished for plan ${updated.plan_id || 'unknown'} in \`${repoFullName || 'your repository'}\`.`,
+                        '',
+                        `🧠 *Engine:* ${engineLabel}`,
+                        `📌 *Run ID:* ${updated.id}`,
+                        '',
+                        `📋 *Task:* ${updated.description || 'n/a'}`,
+                        '',
+                        `🗂️ *Files changed:*`,
+                        filesSection,
+                        '',
+                        ...(commitLine ? [commitLine] : []),
+                        ...(branchLine ? [branchLine] : []),
+                        '',
+                        pushStatusLine,
+                        '',
+                        'You can edit or revert these changes directly on GitHub if needed.',
+                    ];
+
+                    const summaryMessage = summaryLines.join('\n');
+
+                    axios.post(`${botUrl}/api/send`, {
+                        chatId: updated.chat_id,
+                        message: summaryMessage,
+                    }, {
+                        timeout: ORCHESTRATOR_BOT_SEND_TIMEOUT_MS,
+                    }).then(() => {
+                        console.log(
+                            `[Orchestrator] Sent execution-complete summary to ${updated.channel} chat ${updated.chat_id}`
+                        );
+                    }).catch((notifyErr: any) => {
+                        console.warn(
+                            `[Orchestrator] Failed to send execution-complete summary to ${updated.channel}: ` +
+                            `${notifyErr?.message || notifyErr}`
+                        );
+                    });
+                }
+            }
         } catch (err: any) {
             console.error('[Orchestrator] Failed to dispatch approved task for execution:', formatErrorDetails(err));
             if (updated.chat_id) {
