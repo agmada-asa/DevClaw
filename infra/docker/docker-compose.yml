@@ -40,6 +40,20 @@ services:
     depends_on:
       - orchestrator
 
+  ceoclaw-founder:
+    build:
+      context: ../../
+      dockerfile: infra/docker/Dockerfile.ceoclaw-founder
+    env_file:
+      - ../../.env
+    ports:
+      - "3050:3050"
+    volumes:
+      # Persist LinkedIn session cookies across container restarts
+      - ceoclaw-session:/app/session
+    depends_on:
+      - redis
+
   redis:
     image: redis:7-alpine
     ports:
@@ -54,3 +68,5 @@ services:
     ports:
       - "5432:5432"
 
+volumes:
+  ceoclaw-session:

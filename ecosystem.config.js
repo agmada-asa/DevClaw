@@ -47,6 +47,15 @@ module.exports = {
       env: {
         NODE_ENV: 'production'
       }
+    },
+    {
+      name: 'ceoclaw-founder',
+      script: 'services/ceoclaw-founder/dist/index.js',
+      cwd: '/var/www/devclaw',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 3050
+      }
     }
   ]
 };

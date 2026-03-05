@@ -8,7 +8,9 @@ export type ModelRole =
   | 'backend_generator'
   | 'backend_reviewer'
   | 'orchestrator'
-  | 'planner';
+  | 'planner'
+  | 'prospect_qualifier'
+  | 'outreach_writer';
 
 // The actual AI provider companies.
 export type Provider = 'flock' | 'venice' | 'zai' | 'openrouter';
