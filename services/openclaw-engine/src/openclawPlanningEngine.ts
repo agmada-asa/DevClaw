@@ -41,9 +41,9 @@ const toExecutionBlueprint = (
     description: string,
     previousBlueprint?: OpenClawExecutionBlueprint
 ): OpenClawExecutionBlueprint => {
-    const isolationProvider = process.env.OPENCLAW_ISOLATION_PROVIDER || 'venice.ai';
+    const isolationProvider = process.env.OPENCLAW_ISOLATION_PROVIDER || 'isolated-docker-workspace';
     const baseBranch = process.env.OPENCLAW_BASE_BRANCH || 'main';
-    const model = process.env.ZAI_GLM_MODEL || 'glm-4.7';
+    const model = process.env.OPENCLAW_EXECUTION_MODEL || 'openclaw-local-executor';
     const branchName = buildBranchName(plan.planId, description, previousBlueprint?.branch.name);
 
     return {
