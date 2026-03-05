@@ -620,4 +620,118 @@ describe('ExecutionStageManager', () => {
         expect(result?.approvedPatchSet.subTasks).toHaveLength(1);
         expect(gitCalls.some((call) => call.args[0] === 'add')).toBe(true);
     });
+
+    it('does not force backend rewrite when reviewer approves and staged diff is empty', async () => {
+        const gitCalls: GitCommandCall[] = [];
+        const gitState: MockGitState = {
+            branch: 'devclaw/fix-plan-123',
+            head: 'base-commit',
+            commitCount: 0,
+        };
+
+        const runGit = jest.fn(async (args: string[], cwd: string) => {
+            gitCalls.push({ args, cwd });
+
+            if (args[0] === 'config') {
+                return { stdout: '', stderr: '' };
+            }
+            if (args[0] === 'branch' && args[1] === '--show-current') {
+                return { stdout: `${gitState.branch}\n`, stderr: '' };
+            }
+            if (args[0] === 'rev-parse' && args[1] === 'HEAD') {
+                return { stdout: `${gitState.head}\n`, stderr: '' };
+            }
+            if (args[0] === 'checkout') {
+                gitState.branch = args[args.length - 1];
+                return { stdout: '', stderr: '' };
+            }
+            if (args[0] === 'add') {
+                return { stdout: '', stderr: '' };
+            }
+            if (args[0] === 'diff' && args.includes('--cached') && args.includes('--name-only')) {
+                return { stdout: '', stderr: '' };
+            }
+            if (args[0] === 'diff' && args.includes('--cached')) {
+                return { stdout: '', stderr: '' };
+            }
+            if (args[0] === 'diff' && args[1]?.includes('..')) {
+                return { stdout: 'combined patch output', stderr: '' };
+            }
+            if (args[0] === 'show' && args.includes('--patch')) {
+                const sha = args[args.length - 1];
+                return { stdout: `patch for ${sha}`, stderr: '' };
+            }
+            if (args[0] === 'show' && args.includes('--name-only')) {
+                return { stdout: '', stderr: '' };
+            }
+            if (args[0] === 'push' || args[0] === 'reset' || args[0] === 'clean') {
+                return { stdout: '', stderr: '' };
+            }
+            if (args[0] === 'commit') {
+                throw new Error('commit should not be called when there are no staged backend changes');
+            }
+
+            throw new Error(`Unexpected git command: ${args.join(' ')}`);
+        });
+
+        const backendFactory: AgentPairFactory = {
+            createPair: () => ({
+                domain: 'backend',
+                agent: 'Backend',
+                generator: {
+                    name: 'BackendGenerator',
+                    run: async () => ({
+                        content: JSON.stringify({
+                            summary: 'rewrite file',
+                            files: [
+                                {
+                                    path: 'services/api/src/handler.ts',
+                                    content: 'before\n',
+                                },
+                            ],
+                            notes: [],
+                        }),
+                        model: 'deepseek-ai/DeepSeek-V3.2',
+                        provider: 'flock',
+                    }),
+                },
+                reviewer: {
+                    name: 'BackendReviewer',
+                    run: async (input) => {
+                        expect(input.proposedPatch).toBeUndefined();
+                        expect(input.workspaceDiff).toBeUndefined();
+                        return {
+                            decision: 'APPROVED',
+                            notes: ['Looks good'],
+                            content: '{"decision":"APPROVED","notes":["Looks good"]}',
+                            model: 'glm-4.7',
+                            provider: 'zai',
+                        };
+                    },
+                },
+            }),
+        };
+
+        const registry = new AgentPairFactoryRegistry({
+            frontendFactory: createFactory(
+                'FrontendGenerator',
+                'FrontendReviewer',
+                ['APPROVED'],
+                'apps/web/src/App.tsx',
+                []
+            ),
+            backendFactory,
+        });
+
+        const manager = new ExecutionStageManager(registry, runGit as any, 3, 8_000, 10, true);
+
+        const result = await manager.run(createPayload(workspacePath, [
+            createSubTask('plan-backend', 'backend', 'services/api/src/handler.ts'),
+        ]));
+
+        expect(result?.agentLoopReport.subTasks[0].finalDecision).toBe('APPROVED');
+        expect(result?.approvedPatchSet.subTasks[0].commitSha).toBe('');
+        expect(result?.approvedPatchSet.subTasks[0].filesChanged).toEqual([]);
+        expect(gitCalls.some((call) => call.args[0] === 'commit')).toBe(false);
+    });
 });
