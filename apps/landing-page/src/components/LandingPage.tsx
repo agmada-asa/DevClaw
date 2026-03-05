@@ -20,20 +20,24 @@ export default function LandingPage({ onEnter }: Props) {
         }}
       />
 
-      {/* ── Pulsing red glow — sits behind crab ── */}
+      {/* ── Pulsing red glow — sits behind crab, kept subtle ── */}
       <div
         className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[900px] h-[500px] pointer-events-none animate-glow-pulse"
         style={{
           background: 'radial-gradient(ellipse at center bottom, #E8192C 0%, transparent 70%)',
-          filter: 'blur(60px)',
+          filter: 'blur(80px)',
+          opacity: 0.18,
         }}
       />
 
-      {/* ── Crab — fills the bottom two-thirds of the screen ── */}
-      <div className="absolute bottom-[-4%] left-1/2 -translate-x-1/2 w-[min(110vw,900px)] pointer-events-none animate-float">
+      {/* ── Crab — large but muted so text stays legible ── */}
+      <div
+        className="absolute bottom-[-4%] left-1/2 -translate-x-1/2 w-[min(110vw,900px)] pointer-events-none animate-float"
+        style={{ opacity: 0.28 }}
+      >
         <CrabSVG
           className="w-full h-auto"
-          style={{ filter: 'drop-shadow(0 0 80px rgba(232,25,44,0.5)) drop-shadow(0 0 30px rgba(232,25,44,0.3))' }}
+          style={{ filter: 'drop-shadow(0 0 40px rgba(232,25,44,0.2))' }}
         />
       </div>
 
