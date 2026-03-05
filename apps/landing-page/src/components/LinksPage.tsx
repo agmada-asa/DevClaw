@@ -83,23 +83,17 @@ export default function LinksPage({ onBack }: Props) {
             rel="noopener noreferrer"
             style={{ backgroundColor: link.bg, borderColor: link.border }}
             className={`
-              group flex items-center gap-4 w-full px-6 py-4 rounded-2xl border
+              group flex flex-col items-center justify-center gap-2 w-full px-6 py-5 rounded-2xl border
               ${link.textColor} font-semibold
               hover:brightness-110 hover:scale-[1.02] active:scale-[0.98]
               transition-all duration-200 shadow-lg
             `}
           >
             <span className="flex-shrink-0">{link.icon}</span>
-            <div className="flex-1">
+            <div className="text-center">
               <p className="text-base font-bold">{link.label}</p>
               <p className="text-xs opacity-70">{link.sublabel}</p>
             </div>
-            <svg
-              className="w-5 h-5 opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all duration-200"
-              fill="none" stroke="currentColor" viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-            </svg>
           </a>
         ))}
       </div>
