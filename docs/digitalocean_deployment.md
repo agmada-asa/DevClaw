@@ -19,25 +19,24 @@ Before deploying, ensure your DigitalOcean Droplet has the base requirements. Th
 
 To correctly shift away from Cloudflare tunneling, establish direct communication using the Droplet IP.
 
-### Bot Applications (Client-Side)
-If you are running the Telegram and WhatsApp bots locally or on a separate machine, they need to target the new Droplet IP.
-Update **`apps/telegram-bot/.env`** and **`apps/whatsapp-bot/.env`**:
+### Bot Applications
+Since the bots are now deployed alongside your backend services on the Droplet via PM2, their Gateway URL should point to localhost.
+Update **`apps/telegram-bot/.env`** and **`apps/whatsapp-bot/.env`** on the Droplet (or before deploying):
 ```env
-# Change this from the trycloudflare.com URL to point to the Gateway on the Droplet
-GATEWAY_URL=http://104.248.173.95:3001/api/ingress/message
+# Point to the local Gateway running in PM2
+GATEWAY_URL=http://localhost:3001/api/ingress/message
 ```
 
 ### Droplet Services (Backend-Side)
-On the Droplet, update **`services/openclaw-gateway/.env`** to point back to where your bots live, and connect to the local orchestrator:
+On the Droplet, update **`services/openclaw-gateway/.env`** to point to the local bots and connect to the local orchestrator:
 
 ```env
 # Connect to the local PM2 Orchestrator
 ORCHESTRATOR_URL=http://localhost:3010
 
-# Note: Update these to point to wherever your bots are actually running!
-# If your bots are also hosted on the Droplet, use localhost:3002 and localhost:3003
-TELEGRAM_BOT_URL=http://<BOT_HOST_IP>:3002
-WHATSAPP_BOT_URL=http://<BOT_HOST_IP>:3003
+# Bots are now running on PM2 on the same Droplet
+TELEGRAM_BOT_URL=http://localhost:3002
+WHATSAPP_BOT_URL=http://localhost:3003
 ```
 *(Other internal routing URLs like `OPENCLAW_ENGINE_URL` can remain as `http://localhost:<port>` since `pm2` runs all backend services cooperatively on the same Droplet).*
 
