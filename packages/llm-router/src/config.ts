@@ -118,4 +118,34 @@ export const MODEL_CONFIG: Record<ModelRole, ModelConfig> = {
       fallbackOn: ['timeout', 'http5xx'],
     },
   },
+
+  // CEOClaw: Qualifies LinkedIn prospects — analyzes company fit for DevClaw.
+  prospect_qualifier: {
+    provider: 'openrouter',
+    modelId: process.env.QUALIFIER_MODEL || 'z-ai/glm-4.7-flash',
+    fallback: {
+      provider: 'flock',
+      modelId: GENERATOR_MODEL,
+    },
+    policy: {
+      timeoutMs: 60_000,
+      maxRetries: 2,
+      fallbackOn: ['timeout', 'http5xx', 'http429'],
+    },
+  },
+
+  // CEOClaw: Writes personalized LinkedIn outreach messages for DevClaw.
+  outreach_writer: {
+    provider: 'flock',
+    modelId: GENERATOR_MODEL,
+    fallback: {
+      provider: 'openrouter',
+      modelId: process.env.QUALIFIER_MODEL || 'z-ai/glm-4.7-flash',
+    },
+    policy: {
+      timeoutMs: 60_000,
+      maxRetries: 1,
+      fallbackOn: ['timeout', 'http5xx', 'http429'],
+    },
+  },
 };
