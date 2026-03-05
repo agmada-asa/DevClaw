@@ -50,6 +50,7 @@ export interface CreatePlanInput {
     repo: string;
     description: string;
     issueNumber?: number;
+    repoFileTree?: string[];
 }
 
 export interface UpdatePlanInput {
