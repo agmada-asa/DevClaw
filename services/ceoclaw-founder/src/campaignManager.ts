@@ -282,6 +282,46 @@ const runOutreachSending = async (
     return sentCount;
 };
 
+// ─── Discovery + Qualification only (no sending) ─────────────────────────────
+// Used by the founder loop 'sales.find_prospects' task so that sending is
+// always deferred to a separate 'sales.send_outreach' iteration.
+
+export const discoverAndQualify = async (campaignId: string): Promise<CampaignRunResult> => {
+    const campaign = await getCampaign(campaignId);
+    if (!campaign) throw new Error(`Campaign ${campaignId} not found`);
+
+    if (campaign.status === 'running') throw new Error(`Campaign ${campaignId} is already running`);
+
+    const errors: string[] = [];
+    await updateCampaignStatus(campaignId, 'running');
+
+    try {
+        const discovered = await runDiscovery(campaign, errors);
+        const qualified = await runQualification(campaign, discovered, errors);
+        const messageReady = await runMessageGeneration(campaign, qualified, errors);
+
+        // Leave campaign paused — ready for send_outreach to pick up
+        await updateCampaignStatus(campaignId, 'paused');
+
+        console.log(
+            `[CampaignManager] discoverAndQualify ${campaignId}: ` +
+            `discovered=${discovered.length} qualified=${qualified.length} message_ready=${messageReady.length}`
+        );
+
+        return {
+            campaignId,
+            prospectsDiscovered: discovered.length,
+            prospectsQualified: qualified.length,
+            messagesGenerated: messageReady.length,
+            messagesSent: 0,
+            errors,
+        };
+    } catch (err: any) {
+        await updateCampaignStatus(campaignId, 'paused');
+        throw err;
+    }
+};
+
 // ─── Full Pipeline Run ────────────────────────────────────────────────────────
 
 export const runCampaign = async (campaignId: string): Promise<CampaignRunResult> => {

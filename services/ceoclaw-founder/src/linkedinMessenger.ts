@@ -196,6 +196,9 @@ export const sendOutreachBatch = async (
 
     const browser: Browser = await chromium.launch({
         headless,
+        // Use system Chromium when CHROMIUM_PATH is set (Docker/CI).
+        // Falls back to Playwright's bundled Chromium in local dev.
+        executablePath: process.env.CHROMIUM_PATH || undefined,
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
 

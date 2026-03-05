@@ -98,15 +98,15 @@ export const loadBusinessState = async (): Promise<BusinessState> => {
     }
 
     return {
-        mrr: data.mrr || 0,
-        totalSignups: data.total_signups || 0,
-        activeUsers: data.active_users || 0,
-        trafficLast30d: data.traffic_last_30d || 0,
+        mrr: Number(data.mrr) || 0,
+        totalSignups: Number(data.total_signups) || 0,
+        activeUsers: Number(data.active_users) || 0,
+        trafficLast30d: Number(data.traffic_last_30d) || 0,
         landingPageUrl: data.landing_page_url || undefined,
         latestIdea: data.latest_idea || undefined,
         latestContentTitle: data.latest_content_title || undefined,
-        tasksCompletedToday: data.tasks_completed_today || 0,
-        tasksCompletedTotal: data.tasks_completed_total || 0,
+        tasksCompletedToday: Number(data.tasks_completed_today) || 0,
+        tasksCompletedTotal: Number(data.tasks_completed_total) || 0,
         loopEnabled: data.loop_enabled || false,
         phase: (data.phase as BusinessPhase) || 'pre-launch',
         updatedAt: data.updated_at,
@@ -230,7 +230,7 @@ export const getTaskHistory = async (limit = 50): Promise<TaskRecord[]> => {
         input: row.input || undefined,
         output: row.output || undefined,
         error: row.error || undefined,
-        mrrAtTime: row.mrr_at_time || 0,
+        mrrAtTime: Number(row.mrr_at_time) || 0,
         startedAt: row.started_at,
         completedAt: row.completed_at || undefined,
     }));

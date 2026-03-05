@@ -46,6 +46,9 @@ services:
       dockerfile: infra/docker/Dockerfile.ceoclaw-founder
     env_file:
       - ../../.env
+    environment:
+      # Point session file into the persisted volume directory
+      LINKEDIN_SESSION_PATH: /app/session/linkedin-session.json
     ports:
       - "3050:3050"
     volumes:
