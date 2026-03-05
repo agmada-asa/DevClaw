@@ -25,6 +25,7 @@ export interface GeneratorRunInput {
     workspacePath?: string;
     executionBranchName?: string;
     fileSnapshots?: WorkspaceFileSnapshot[];
+    repoFileTree?: string[];
 }
 
 export interface GeneratorRunOutput {
@@ -45,6 +46,7 @@ export interface ReviewerRunInput {
     proposedPatch?: string;
     workspaceDiff?: string;
     fileSnapshots?: WorkspaceFileSnapshot[];
+    repoFileTree?: string[];
 }
 
 export interface ReviewerRunOutput {
@@ -148,6 +150,7 @@ const buildGeneratorMessages = (
         `targetFiles: ${JSON.stringify(input.subTask.files)}`,
         'fileSnapshots:',
         JSON.stringify(input.fileSnapshots || [], null, 2),
+        ...(input.repoFileTree && input.repoFileTree.length > 0 ? ['repository execution file tree:', ...input.repoFileTree.slice(0, 500).map((f: string) => `- ${f}`)] : []),
     ].join('\n');
 
     return [
@@ -194,37 +197,64 @@ const buildGeneratorMessages = (
 const buildReviewerMessages = (
     agentName: AgentLabel,
     input: ReviewerRunInput
-): ChatRequest['messages'] => [
+): ChatRequest['messages'] => {
+    const userSections = [
+        `runId: ${input.runId}`,
+        `planId: ${input.planId || 'n/a'}`,
+        `subTaskId: ${input.subTask.id}`,
+        `iteration: ${input.iteration}`,
+        `objective: ${input.subTask.objective}`,
+        `files: ${JSON.stringify(input.subTask.files)}`,
+        `workspacePath: ${input.workspacePath || 'n/a'}`,
+        `executionBranch: ${input.executionBranchName || 'n/a'}`,
+        'fileSnapshots:',
+        JSON.stringify(input.fileSnapshots || [], null, 2),
+        'generatorOutput:',
+        input.generation.content,
+    ];
+
+    if (input.proposedPatch) {
+        userSections.push('proposedPatch:', input.proposedPatch);
+    }
+
+    if (input.workspaceDiff) {
+        userSections.push('workspaceDiffAfterPatch:', input.workspaceDiff);
+    }
+
+    if (input.repoFileTree && input.repoFileTree.length > 0) {
+        userSections.push(
+            'repository execution file tree:',
+            ...input.repoFileTree.slice(0, 500).map((f: string) => `- ${f}`)
+        );
+    }
+
+    return [
         {
             role: 'system',
             content: [
                 `You are the ${agentName} Reviewer Agent.`,
-                'Assess the generator output and decide if it is ready.',
+                'Assess the generator output and decide whether it satisfies the sub-task objective.',
+                'APPROVAL BIAS: You MUST default to APPROVED unless you can identify a concrete, specific, actionable problem.',
+                'Approve if:',
+                '  - The required files are present with real, complete content (not placeholders or empty strings)',
+                '  - The code plausibly satisfies the objective described in the sub-task',
+                '  - There are no syntax errors that would prevent the file from being parsed/compiled',
+                'Only reject (REWRITE) if:',
+                '  - A required file is missing entirely',
+                '  - A file contains only placeholder text like "TODO" or "...", or is empty',
+                '  - There is a critical logic error that directly contradicts the objective',
+                'Do NOT reject for minor style issues, formatting preferences, or speculative improvements.',
+                'Do NOT reject if the output is already functionally correct.',
                 'Return JSON only with shape {"decision":"APPROVED|REWRITE","notes":["string"]}.',
+                'The notes array must explain your reasoning, especially if rejecting.',
             ].join('\n'),
         },
         {
             role: 'user',
-            content: [
-                `runId: ${input.runId}`,
-                `planId: ${input.planId || 'n/a'}`,
-                `subTaskId: ${input.subTask.id}`,
-                `iteration: ${input.iteration}`,
-                `objective: ${input.subTask.objective}`,
-                `files: ${JSON.stringify(input.subTask.files)}`,
-                `workspacePath: ${input.workspacePath || 'n/a'}`,
-                `executionBranch: ${input.executionBranchName || 'n/a'}`,
-                'fileSnapshots:',
-                JSON.stringify(input.fileSnapshots || [], null, 2),
-                'generatorOutput:',
-                input.generation.content,
-                'proposedPatch:',
-                input.proposedPatch || 'n/a',
-                'workspaceDiffAfterPatch:',
-                input.workspaceDiff || 'n/a',
-            ].join('\n'),
+            content: userSections.join('\n'),
         },
     ];
+};
 
 class LlmGeneratorAgent implements GeneratorAgent {
     constructor(
