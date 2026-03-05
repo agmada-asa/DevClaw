@@ -66,17 +66,28 @@ export async function sendToUser(
     console.warn(`[notifier] Message to ${channel} chat ${chatId} was truncated to ${MAX_LENGTH[channel]} chars.`);
   }
 
-  try {
-    await axios.post(`${botUrl}/api/send`, { chatId, message: safeMessage });
-    console.log(`[notifier] Sent message to ${channel} chat ${chatId}`);
-    return true;
-  } catch (err: any) {
-    console.error(
-      `[notifier] Failed to send message to ${channel} chat ${chatId}:`,
-      err.message,
-    );
-    return false;
+  let lastErr: any;
+  for (let attempt = 1; attempt <= 1 + MAX_SEND_RETRIES; attempt++) {
+    try {
+      await axios.post(`${botUrl}/api/send`, { chatId, message: safeMessage });
+      console.log(`[notifier] Sent message to ${channel} chat ${chatId}`);
+      return true;
+    } catch (err: any) {
+      lastErr = err;
+      if (attempt <= MAX_SEND_RETRIES) {
+        console.warn(
+          `[notifier] Send attempt ${attempt} failed for ${channel} chat ${chatId}, retrying in ${RETRY_DELAY_MS}ms...`,
+        );
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));
+      }
+    }
   }
+
+  console.error(
+    `[notifier] All ${1 + MAX_SEND_RETRIES} attempts failed for ${channel} chat ${chatId}:`,
+    lastErr?.message,
+  );
+  return false;
 }
 
 // Formats and sends a summary of code changes made by the agent-runner back
