@@ -2,6 +2,8 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { createClient } from '@supabase/supabase-js';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
@@ -27,6 +29,7 @@ const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
 const supabase = supabaseUrl && supabaseKey ? createClient(supabaseUrl, supabaseKey) : null;
 const orchestrationEngine = getOrchestrationEngine();
+const execFileAsync = promisify(execFile);
 
 const parsePositiveInt = (value: string | undefined, fallback: number): number => {
     const parsed = Number.parseInt(value || '', 10);
@@ -68,6 +71,53 @@ const formatErrorDetails = (err: any): string => {
     ]
         .filter(Boolean)
         .join(' | ');
+};
+
+const redactSecrets = (value: string): string =>
+    value.replace(/(x-access-token:)[^@\s]+@/gi, '$1***@');
+
+const runGitCommand = async (args: string[], cwd: string): Promise<string> => {
+    try {
+        const result = await execFileAsync('git', args, {
+            cwd,
+            timeout: 10 * 60 * 1000,
+            maxBuffer: 10 * 1024 * 1024,
+            env: {
+                ...process.env,
+                GIT_TERMINAL_PROMPT: '0',
+            },
+        });
+        return (result.stdout || '').toString().trim();
+    } catch (err: any) {
+        const stderr = (err?.stderr || '').toString().trim();
+        const stdout = (err?.stdout || '').toString().trim();
+        const detail = redactSecrets(stderr || stdout || err?.message || 'unknown git failure');
+        throw new Error(`git ${args.join(' ')} failed: ${detail}`);
+    }
+};
+
+const attemptFallbackBranchPush = async (
+    workspacePath: string,
+    branchName: string
+): Promise<{ pushed: boolean; headCommit?: string; error?: string }> => {
+    try {
+        const currentBranch = await runGitCommand(['rev-parse', '--abbrev-ref', 'HEAD'], workspacePath);
+        if (currentBranch !== branchName) {
+            await runGitCommand(['checkout', branchName], workspacePath);
+        }
+
+        const headCommit = await runGitCommand(['rev-parse', 'HEAD'], workspacePath);
+        await runGitCommand(['push', '-u', 'origin', branchName], workspacePath);
+        return {
+            pushed: true,
+            headCommit,
+        };
+    } catch (err: any) {
+        return {
+            pushed: false,
+            error: err?.message || 'fallback push failed',
+        };
+    }
 };
 
 // ─── Health Check ────────────────────────────────────────────────────────────
@@ -420,6 +470,43 @@ app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
                 executionBranchName: isolatedEnvironment.branchName,
             });
 
+            const branchPush = execution.branchPush as any | undefined;
+
+            if (
+                execution.engine === 'openclaw' &&
+                preparation?.isolatedEnvironmentPath &&
+                branchPush?.pushed === false &&
+                typeof branchPush?.branchName === 'string' &&
+                branchPush.branchName.trim().length > 0
+            ) {
+                const fallbackPush = await attemptFallbackBranchPush(
+                    preparation.isolatedEnvironmentPath,
+                    branchPush.branchName.trim()
+                );
+
+                if (fallbackPush.pushed) {
+                    execution.branchPush = {
+                        ...(branchPush || {}),
+                        pushed: true,
+                        headCommit: fallbackPush.headCommit || branchPush.headCommit,
+                    };
+                    console.log(
+                        `[Orchestrator] Fallback push succeeded for run ${updated.id}: ` +
+                        `branch=${branchPush.branchName}`
+                    );
+                } else {
+                    execution.branchPush = {
+                        ...(branchPush || {}),
+                        pushed: false,
+                        error: fallbackPush.error,
+                    };
+                    console.warn(
+                        `[Orchestrator] Fallback push failed for run ${updated.id}: ` +
+                        `${fallbackPush.error || 'unknown error'}`
+                    );
+                }
+            }
+
             if (execution.approvedPatchSet) {
                 const patchSetRef = (execution.approvedPatchSet as any)?.patchSetRef || 'n/a';
                 console.log(
@@ -464,13 +551,11 @@ app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
                     const approvedPatchSet = execution.approvedPatchSet as any | undefined;
                     const branchPush = execution.branchPush as any | undefined;
 
-                    const changedFiles: string[] = Array.from(
-                        new Set(
-                            (approvedPatchSet?.subTasks || [])
-                                .flatMap((st: any) => Array.isArray(st?.filesChanged) ? st.filesChanged : [])
-                                .filter((f: unknown): f is string => typeof f === 'string' && f.trim().length > 0)
-                        )
-                    ).slice(0, 50);
+                    const flattenedChangedFiles: string[] = (approvedPatchSet?.subTasks || [])
+                        .flatMap((st: any) => Array.isArray(st?.filesChanged) ? st.filesChanged : [])
+                        .filter((f: unknown): f is string => typeof f === 'string' && f.trim().length > 0);
+
+                    const changedFiles: string[] = Array.from(new Set<string>(flattenedChangedFiles)).slice(0, 50);
 
                     const filesSection = changedFiles.length
                         ? changedFiles.map((f) => `- \`${f}\``).join('\n')
@@ -493,10 +578,16 @@ app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
                     const branchLine = branchUrl ? `🌿 *Execution branch:* ${branchUrl}` : '';
 
                     const pushStatusLine =
+                        // !hasCodeChanges
+                        //     ? '⚠️ Execution completed, but no code changes were generated, so nothing was pushed to GitHub.'
+                        //     : branchPush && branchPush.pushed === false
+                        //         ? `⚠️ I generated code changes but could not push the branch.${branchPush.error ? `\nReason: ${branchPush.error}` : ''
+                        //         }`
+                        //         : '✅ All requested changes have been implemented and pushed to GitHub.';
+
                         branchPush && branchPush.pushed === false
                             ? '⚠️ I generated code changes but did not push a branch. You may need to apply the patch manually.'
                             : '✅ All requested changes have been implemented and pushed to GitHub.';
-
                     const engineLabel =
                         execution.engine === 'openclaw'
                             ? 'OpenClaw execution engine'

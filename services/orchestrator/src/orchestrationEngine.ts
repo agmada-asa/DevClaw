@@ -226,7 +226,7 @@ class CombinedOrchestrationEngine implements OrchestrationEngine {
  *   select either legacy agent-runner or modern openclaw execution for `execute()`.
  */
 export const getOrchestrationEngine = (): OrchestrationEngine => {
-    const defaultEngine = (process.env.ORCHESTRATION_ENGINE || 'legacy').toLowerCase();
+    const defaultEngine = (process.env.ORCHESTRATION_ENGINE || 'openclaw').toLowerCase();
     const executionEngine = (process.env.EXECUTION_ENGINE || defaultEngine).toLowerCase();
 
     const planning = new OpenClawPlanningEngine();

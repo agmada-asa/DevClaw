@@ -12,8 +12,8 @@
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
-    "dev:servers": "turbo run dev --filter=openclaw-gateway --filter=orchestrator --filter=openclaw-engine --filter=agent-runner --filter=telegram-bot --filter=whatsapp-bot",
-    "build:servers": "turbo run build --filter=openclaw-gateway --filter=orchestrator --filter=openclaw-engine --filter=agent-runner --filter=telegram-bot --filter=whatsapp-bot",
+    "dev:servers": "turbo run dev --filter=openclaw-gateway --filter=orchestrator --filter=openclaw-engine --filter=agent-runner --filter=telegram-bot --filter=whatsapp-bot --filter=ceoclaw-founder",
+    "build:servers": "turbo run build --filter=openclaw-gateway --filter=orchestrator --filter=openclaw-engine --filter=agent-runner --filter=telegram-bot --filter=whatsapp-bot --filter=ceoclaw-founder",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",

@@ -1,6 +1,4 @@
-import { AgentLoopManager, AgentLoopReport } from '../src/agentLoopManager';
 import { ExecutionCoordinator } from '../src/executionCoordinator';
-import { ExecutionStageManager } from '../src/executionStageManager';
 import {
     ApprovedPatchSet,
     BranchPushResult,
@@ -25,24 +23,6 @@ const createPayload = (overrides?: Partial<ExecutePayload>): ExecutePayload => (
     ...overrides,
 });
 
-const createAgentLoopReport = (): AgentLoopReport => ({
-    maxIterations: 3,
-    totalSubTasks: 1,
-    approvedSubTasks: 1,
-    rewriteRequiredSubTasks: 0,
-    subTasks: [
-        {
-            subTaskId: 'plan-123-frontend',
-            domain: 'frontend',
-            agent: 'Frontend',
-            iterations: 1,
-            finalDecision: 'APPROVED',
-            reviewerNotes: ['Looks good'],
-            trace: [],
-        },
-    ],
-});
-
 const createPatchSet = (): ApprovedPatchSet => ({
     patchSetRef: 'run-123:abc123',
     runId: 'run-123',
@@ -64,49 +44,38 @@ const createBranchPush = (): BranchPushResult => ({
 
 describe('ExecutionCoordinator', () => {
     afterEach(() => {
-        delete process.env.RUNNER_AGENT_LOOP_ENABLED;
+        jest.clearAllMocks();
     });
 
-    it('uses execution stage flow when isolated environment and subTasks are provided', async () => {
+    it('dispatches to plugin and forwards approved patch metadata', async () => {
         const plugin: ExecutionPlugin = {
             execute: jest.fn(async () => ({
-                runRef: 'stub-run',
-                engine: 'stub' as const,
+                runRef: 'openclaw-run-123',
+                engine: 'openclaw' as const,
                 accepted: true,
-            })),
-        };
-        const loopManager = {
-            run: jest.fn(async () => createAgentLoopReport()),
-        } as unknown as AgentLoopManager;
-        const executionStageManager = {
-            run: jest.fn(async () => ({
-                agentLoopReport: createAgentLoopReport(),
                 approvedPatchSet: createPatchSet(),
                 branchPush: createBranchPush(),
             })),
-        } as unknown as ExecutionStageManager;
+        };
 
-        const coordinator = new ExecutionCoordinator(plugin, loopManager, executionStageManager);
+        const coordinator = new ExecutionCoordinator(plugin);
         const result = await coordinator.execute(createPayload({
             isolatedEnvironmentPath: '/tmp/workspace',
             executionBranchName: 'devclaw/fix-plan-123',
         }));
 
-        expect(executionStageManager.run).toHaveBeenCalledTimes(1);
-        expect(loopManager.run).not.toHaveBeenCalled();
-        expect(plugin.execute).not.toHaveBeenCalled();
+        expect(plugin.execute).toHaveBeenCalledTimes(1);
 
         expect(result).toMatchObject({
-            runRef: 'agent-runner-run-123',
-            engine: 'agent-runner',
+            runRef: 'openclaw-run-123',
+            engine: 'openclaw',
             accepted: true,
         });
         expect(result.approvedPatchSet?.patchSetRef).toBe('run-123:abc123');
         expect(result.branchPush?.pushed).toBe(true);
     });
 
-    it('falls back to plugin dispatch when execution stage preconditions are missing', async () => {
-        process.env.RUNNER_AGENT_LOOP_ENABLED = 'true';
+    it('dispatches payload without loop metadata', async () => {
         const plugin: ExecutionPlugin = {
             execute: jest.fn(async () => ({
                 runRef: 'stub-run-123',
@@ -114,27 +83,17 @@ describe('ExecutionCoordinator', () => {
                 accepted: true,
             })),
         };
-        const loopManager = {
-            run: jest.fn(async () => createAgentLoopReport()),
-        } as unknown as AgentLoopManager;
-        const executionStageManager = {
-            run: jest.fn(async () => null),
-        } as unknown as ExecutionStageManager;
-
-        const coordinator = new ExecutionCoordinator(plugin, loopManager, executionStageManager);
+        const coordinator = new ExecutionCoordinator(plugin);
         const result = await coordinator.execute(createPayload({
             isolatedEnvironmentPath: undefined,
             executionBranchName: undefined,
         }));
 
-        expect(executionStageManager.run).not.toHaveBeenCalled();
-        expect(loopManager.run).toHaveBeenCalledTimes(1);
         expect(plugin.execute).toHaveBeenCalledTimes(1);
         expect(result).toEqual({
             runRef: 'stub-run-123',
             engine: 'stub',
             accepted: true,
-            agentLoopReport: createAgentLoopReport(),
         });
     });
 });

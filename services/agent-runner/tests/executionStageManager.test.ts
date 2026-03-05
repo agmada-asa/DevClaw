@@ -621,7 +621,7 @@ describe('ExecutionStageManager', () => {
         expect(gitCalls.some((call) => call.args[0] === 'add')).toBe(true);
     });
 
-    it('does not force backend rewrite when reviewer approves and staged diff is empty', async () => {
+    it('forces rewrite when reviewer approves but staged diff is empty', async () => {
         const gitCalls: GitCommandCall[] = [];
         const gitState: MockGitState = {
             branch: 'devclaw/fix-plan-123',
@@ -729,9 +729,10 @@ describe('ExecutionStageManager', () => {
             createSubTask('plan-backend', 'backend', 'services/api/src/handler.ts'),
         ]));
 
-        expect(result?.agentLoopReport.subTasks[0].finalDecision).toBe('APPROVED');
+        expect(result?.agentLoopReport.subTasks[0].finalDecision).toBe('REWRITE');
         expect(result?.approvedPatchSet.subTasks[0].commitSha).toBe('');
         expect(result?.approvedPatchSet.subTasks[0].filesChanged).toEqual([]);
+        expect(result?.branchPush.pushed).toBe(false);
         expect(gitCalls.some((call) => call.args[0] === 'commit')).toBe(false);
     });
 });

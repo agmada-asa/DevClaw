@@ -1,9 +1,12 @@
 import request from 'supertest';
-import axios from 'axios';
-
-jest.mock('axios');
-const mockPost = axios.post as jest.MockedFunction<typeof axios.post>;
 const mockPlanRecords = new Map<string, any>();
+const mockDispatch = jest.fn();
+
+jest.mock('../src/executionDispatcher', () => ({
+    getExecutionDispatcher: jest.fn(() => ({
+        dispatch: mockDispatch,
+    })),
+}));
 
 jest.mock('../src/planStore', () => {
     const store = {
@@ -96,6 +99,11 @@ describe('OpenClaw Engine API', () => {
     beforeEach(() => {
         mockPlanRecords.clear();
         jest.clearAllMocks();
+        mockDispatch.mockResolvedValue({
+            runRef: 'openclaw-run-default',
+            engine: 'openclaw',
+            accepted: true,
+        });
     });
 
     it('GET /health -> 200 ok', async () => {
@@ -187,22 +195,19 @@ describe('OpenClaw Engine API', () => {
         expect(res.body.error).toMatch(/runId/);
     });
 
-    it('POST /api/execute -> 409 when source indicates recursive loop', async () => {
-        const res = await request(app).post('/api/execute').send({
-            runId: 'run-loop',
-            source: 'agent-runner',
-        });
-        expect(res.status).toBe(409);
-        expect(res.body.error).toMatch(/loop detected/i);
-    });
-
-    it('POST /api/execute -> 202 and dispatch metadata', async () => {
-        mockPost.mockResolvedValueOnce({
-            data: {
-                runRef: 'stub-run-123',
-                engine: 'stub',
+    it('POST /api/execute -> 202 and execution metadata', async () => {
+        mockDispatch.mockResolvedValueOnce({
+            runRef: 'openclaw-run-123',
+            engine: 'openclaw',
+            accepted: true,
+            approvedPatchSet: {
+                patchSetRef: 'openclaw-run-123-ps',
             },
-        } as any);
+            branchPush: {
+                branchName: 'openclaw/test',
+                pushed: true,
+            },
+        });
 
         const res = await request(app).post('/api/execute').send({
             runId: 'run-123',
@@ -213,9 +218,14 @@ describe('OpenClaw Engine API', () => {
         expect(res.status).toBe(202);
         expect(res.body.success).toBe(true);
         expect(res.body.status).toBe('dispatched');
-        expect(res.body.runRef).toBe('stub-run-123');
-        expect(res.body.engine).toBe('stub');
-        expect(mockPost).toHaveBeenCalledTimes(1);
-        expect(mockPost.mock.calls[0][0]).toContain('/api/execute');
+        expect(res.body.runRef).toBe('openclaw-run-123');
+        expect(res.body.engine).toBe('openclaw');
+        expect(res.body.approvedPatchSet.patchSetRef).toBe('openclaw-run-123-ps');
+        expect(res.body.branchPush.branchName).toBe('openclaw/test');
+        expect(mockDispatch).toHaveBeenCalledTimes(1);
+        expect(mockDispatch.mock.calls[0][0]).toMatchObject({
+            runId: 'run-123',
+            planId: 'plan-123',
+        });
     });
 });

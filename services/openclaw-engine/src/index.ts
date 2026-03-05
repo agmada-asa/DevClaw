@@ -73,7 +73,7 @@ app.get('/health', (_req: Request, res: Response) => {
     res.status(200).json({
         status: 'ok',
         service: 'openclaw-engine',
-        capabilities: ['plan.create', 'plan.update', 'plan.get', 'execute.dispatch'],
+        capabilities: ['plan.create', 'plan.update', 'plan.get', 'execute.local'],
         runtime: 'openclaw-cli',
     });
 });
@@ -198,24 +198,15 @@ app.post('/api/plan/:planId/update', async (req: Request, res: Response): Promis
 /**
  * POST /api/execute
  * 
- * Dispatches execution to the agent-runner service while keeping OpenClaw
- * as the orchestration entrypoint for execution.
+ * Runs execution directly inside the isolated workspace using OpenClaw CLI.
  */
 app.post('/api/execute', async (req: Request, res: Response): Promise<any> => {
     const payload = req.body || {};
     const runId = typeof payload.runId === 'string' ? payload.runId.trim() : '';
-    const source = typeof payload.source === 'string' ? payload.source.trim() : '';
 
     if (!runId) {
         return res.status(400).json({
             error: 'Missing required field: runId',
-        });
-    }
-
-    if (source.toLowerCase() === 'agent-runner') {
-        return res.status(409).json({
-            error: 'Execution dispatch loop detected (agent-runner -> openclaw-engine -> agent-runner).',
-            hint: 'Set RUNNER_ENGINE=stub or RUNNER_ENGINE=docker when orchestrator uses EXECUTION_ENGINE=openclaw.',
         });
     }
 
@@ -230,12 +221,22 @@ app.post('/api/execute', async (req: Request, res: Response): Promise<any> => {
             runRef: dispatch.runRef,
             engine: dispatch.engine,
             accepted: dispatch.accepted,
+            ...(dispatch.approvedPatchSet
+                ? {
+                    approvedPatchSet: dispatch.approvedPatchSet,
+                }
+                : {}),
+            ...(dispatch.branchPush
+                ? {
+                    branchPush: dispatch.branchPush,
+                }
+                : {}),
         });
     } catch (err: any) {
         const detail = formatExecutionError(err);
         console.error(`[OpenClawEngine] Failed to dispatch execution for runId=${runId}: ${detail}`);
         return res.status(502).json({
-            error: 'Failed to dispatch execution run',
+            error: 'Failed to execute run in isolated workspace',
             detail,
         });
     }

@@ -1,26 +1,15 @@
 # agent-runner
 
 ## Purpose
-Dispatches approved plans to an execution backend and runs paired generator/reviewer loops per execution subtask.
+Dispatches approved plans to an execution backend. By default, execution is delegated to OpenClaw, which applies changes directly inside the isolated workspace.
 
 ## Endpoints
 - `GET /health`
 - `POST /api/execute`
 
-## Agent Pairing
-- `FrontendAgentFactory` builds `FrontendGenerator` + `FrontendReviewer`.
-- `BackendAgentFactory` builds `BackendGenerator` + `BackendReviewer`.
-- Agent loop retries are controlled via `RUNNER_AGENT_LOOP_MAX_ITERATIONS` (default: `3`).
-- Set `RUNNER_AGENT_LOOP_ENABLED=false` to disable loop execution.
-
-### LLM Routing
-- Frontend/Backend `Generator` roles route to FLock DeepSeek V3.2.
-- Frontend/Backend `Reviewer` roles route to Z.AI GLM.
-- Provider-level retry/fallback behavior is controlled by `packages/llm-router`.
-
 ## Backend Selection
-- `RUNNER_ENGINE=stub` (default): deterministic local dispatch.
-- `RUNNER_ENGINE=openclaw`: forwards execution to OpenClaw.
+- `RUNNER_ENGINE=openclaw` (default): forwards execution to OpenClaw for direct workspace implementation.
+- `RUNNER_ENGINE=stub`: deterministic local dispatch.
 - `RUNNER_ENGINE=docker`: runs execution inside an ephemeral local Docker sandbox.
 
 ### OpenClaw Config

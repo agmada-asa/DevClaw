@@ -72,6 +72,8 @@ export interface ExecuteDispatch {
     runRef: string;
     engine: 'stub' | 'openclaw' | 'docker' | 'agent-runner';
     accepted: boolean;
+    approvedPatchSet?: ApprovedPatchSet;
+    branchPush?: BranchPushResult;
 }
 
 export interface ExecutionPlugin {
@@ -108,7 +110,13 @@ class OpenClawExecutionPlugin implements ExecutionPlugin {
         return {
             runRef: res.data?.runRef || payload.runId,
             engine: 'openclaw',
-            accepted: true,
+            accepted: typeof res.data?.accepted === 'boolean' ? res.data.accepted : true,
+            ...(res.data?.approvedPatchSet
+                ? { approvedPatchSet: res.data.approvedPatchSet as ApprovedPatchSet }
+                : {}),
+            ...(res.data?.branchPush
+                ? { branchPush: res.data.branchPush as BranchPushResult }
+                : {}),
         };
     }
 }
@@ -305,7 +313,7 @@ export class DockerExecutionPlugin implements ExecutionPlugin {
 }
 
 export const getExecutionPlugin = (): ExecutionPlugin => {
-    const engine = (process.env.RUNNER_ENGINE || 'stub').toLowerCase();
+    const engine = (process.env.RUNNER_ENGINE || 'openclaw').toLowerCase();
     if (engine === 'docker') {
         return new DockerExecutionPlugin();
     }
