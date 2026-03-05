@@ -25,6 +25,9 @@ Update **`apps/telegram-bot/.env`** and **`apps/whatsapp-bot/.env`** on the Drop
 ```env
 # Point to the local Gateway running in PM2
 GATEWAY_URL=http://localhost:3001/api/ingress/message
+
+# The public URL of the Gateway so bots can generate correct auth links
+PUBLIC_URL=http://104.248.173.95:3001
 ```
 
 ### Droplet Services (Backend-Side)
