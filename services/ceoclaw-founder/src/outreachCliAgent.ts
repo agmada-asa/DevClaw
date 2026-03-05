@@ -13,6 +13,8 @@ import { chat } from '@devclaw/llm-router';
 import { runOpenClawPrompt, extractJsonObject, parseNumberEnv } from './openclawRunner';
 import { QualifyInput, QualificationResult, MessageInput, MessageResult } from './types';
 
+const LANDING_PAGE_URL = process.env.CEOCLAW_LANDING_PAGE_URL || 'https://devclaw.ai';
+
 // ─── Qualification ────────────────────────────────────────────────────────────
 
 const buildQualifyPrompt = (input: QualifyInput): string => [
@@ -64,13 +66,14 @@ const buildMessagePrompt = (input: MessageInput): string => [
     'You are CEOClaw, writing LinkedIn outreach for DevClaw.',
     '',
     'DevClaw lets developers describe tasks in Telegram and get back a GitHub PR — AI handles planning, coding, and review.',
+    `Landing page: ${LANDING_PAGE_URL}`,
     '',
     'Write a SHORT LinkedIn connection request note:',
     '- Max 300 characters (hard LinkedIn limit)',
     '- Conversational and human, not spammy or salesy',
     '- Reference their specific role or company',
     '- One-line value prop of DevClaw',
-    '- Soft CTA: offer a quick demo',
+    `- Soft CTA: invite them to check out ${LANDING_PAGE_URL} or offer a quick demo`,
     '',
     'Return ONLY valid JSON (no markdown):',
     '{"message":"string (≤300 chars)","subject":"string (optional follow-up subject line)"}',
