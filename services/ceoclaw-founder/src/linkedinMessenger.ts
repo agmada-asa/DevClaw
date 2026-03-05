@@ -47,27 +47,18 @@ const sendConnectionRequest = async (
 
     try {
         await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 }).catch(() => {});
+
+        // Wait for the profile action area to render (LinkedIn is a heavy SPA).
+        // The profile card container loads after the nav bar — we need it before scanning buttons.
+        await page.waitForSelector(
+            '.pv-top-card, .pvs-profile-actions, .ph5, main section',
+            { timeout: 10_000 }
+        ).catch(() => {});
         await sleep(jitter(2000));
-
-        // Inspect what action buttons are available on this profile (fast DOM query)
-        const pageButtons = await page.evaluate(() => {
-            return Array.from(document.querySelectorAll('button'))
-                .slice(0, 20)
-                .map(b => ({ text: (b.textContent || '').trim(), aria: b.getAttribute('aria-label') || '' }));
-        });
-
-        // Check if this profile only has "Follow" (no Connect available — influencer/creator)
-        const mainButtons = pageButtons.slice(5, 12); // profile action buttons start ~index 6
-        const hasFollow = mainButtons.some(b => b.aria.startsWith('Follow '));
-        const hasConnect = mainButtons.some(b => b.aria.includes('Invite') && b.aria.includes('connect'));
-        if (hasFollow && !hasConnect) {
-            console.warn(`[LinkedInMessenger] ${profileUrl} only has Follow button — skipping (influencer/creator profile)`);
-            return false;
-        }
 
         let connected = false;
 
-        // 1. Try name-specific selector first: "Invite [FirstName] to connect" — most reliable
+        // 1. Name-specific: "Invite [FirstName] to connect" — scoped to profile card if possible
         if (firstName) {
             const nameBtn = page.locator(`button[aria-label*="Invite ${firstName}"]`).first();
             const visible = await nameBtn.isVisible({ timeout: 3000 }).catch(() => false);
@@ -75,59 +66,114 @@ const sendConnectionRequest = async (
                 await nameBtn.click();
                 await sleep(jitter(1000));
                 connected = true;
+                console.log(`[LinkedInMessenger] Connected via name-specific button`);
             }
         }
 
-        // 2. Any "Invite … to connect" button (avoids matching sidebar Follow buttons)
+        // 2. "More actions" (3-dots) dropdown — try this before generic selectors to avoid sidebar matches
         if (!connected) {
-            const inviteBtn = page.locator('button[aria-label*="Invite"][aria-label*="connect"]').first();
-            const visible = await inviteBtn.isVisible({ timeout: 3000 }).catch(() => false);
-            if (visible) {
-                await inviteBtn.click();
-                await sleep(jitter(1000));
-                connected = true;
-            }
-        }
-
-        // 3. Connect may be behind a "More actions" dropdown
-        if (!connected) {
-            const moreBtn = page.locator('button[aria-label*="More actions"], button[aria-label*="more actions"]').first();
+            // LinkedIn uses various aria-labels for the 3-dots menu on profile pages
+            const moreBtn = page.locator([
+                'button[aria-label*="More actions"]',
+                'button[aria-label*="more actions"]',
+                'button[aria-label*="profile actions"]',
+                'button[aria-label*="More options"]',
+            ].join(', ')).first();
             const moreVisible = await moreBtn.isVisible({ timeout: 3000 }).catch(() => false);
             if (moreVisible) {
                 await moreBtn.click();
-                await sleep(jitter(800));
-                const connectOption = page.locator('[role="menuitem"]:has-text("Connect")').first();
+                await sleep(jitter(1000));
+                const connectOption = page.locator(
+                    '[role="menuitem"]:has-text("Connect"), [role="option"]:has-text("Connect")'
+                ).first();
                 const optionVisible = await connectOption.isVisible({ timeout: 3000 }).catch(() => false);
                 if (optionVisible) {
                     await connectOption.click();
-                    await sleep(jitter(800));
+                    await sleep(jitter(1000));
                     connected = true;
+                    console.log(`[LinkedInMessenger] Connected via More actions dropdown`);
+                } else {
+                    await page.keyboard.press('Escape');
+                    await sleep(500);
                 }
             }
         }
 
+        // 3. Generic "Invite … to connect" — but only if it's NOT a sidebar-section button.
+        //    We check the button's closest ancestor to ensure it's in the profile top section.
         if (!connected) {
-            console.warn(`[LinkedInMessenger] Connect button not found on ${profileUrl}`);
+            const inviteBtns = page.locator('button[aria-label*="Invite"][aria-label*="connect"]');
+            const count = await inviteBtns.count().catch(() => 0);
+            for (let i = 0; i < count; i++) {
+                const btn = inviteBtns.nth(i);
+                const visible = await btn.isVisible({ timeout: 2000 }).catch(() => false);
+                if (!visible) continue;
+                // Confirm this button is in the profile actions area (not sidebar People You May Know)
+                const inSidebar = await btn.evaluate((el) => {
+                    const aside = el.closest('aside, [data-view-name*="pymk"], .artdeco-carousel');
+                    return !!aside;
+                }).catch(() => false);
+                if (inSidebar) {
+                    console.log(`[LinkedInMessenger] Skipping sidebar Invite button`);
+                    continue;
+                }
+                await btn.click();
+                await sleep(jitter(1000));
+                connected = true;
+                console.log(`[LinkedInMessenger] Connected via profile Invite button (index ${i})`);
+                break;
+            }
+        }
+
+        if (!connected) {
+            console.warn(`[LinkedInMessenger] No Connect button found on ${profileUrl} — skipping`);
             return false;
         }
 
-        // Add a note to the connection request
-        const addNoteBtn = page.locator('button:has-text("Add a note"), button[aria-label*="Add a note"]').first();
-        const addNoteVisible = await addNoteBtn.isVisible({ timeout: 5000 }).catch(() => false);
+        // After clicking Connect, wait for the invitation modal to appear
+        await sleep(jitter(1500));
+
+        // Log modal buttons to see what LinkedIn is showing
+        const modalButtons = await page.evaluate(() => {
+            return Array.from(document.querySelectorAll('button'))
+                .map(b => ({ text: (b.textContent || '').trim().slice(0, 60), aria: b.getAttribute('aria-label') || '' }))
+                .filter(b => b.aria || b.text);
+        });
+        console.log(`[LinkedInMessenger] Modal buttons: ${modalButtons.map(b => b.aria || b.text).join(' | ').slice(0, 400)}`);
+
+        // Try to add a note — button text varies between "Add a note" and "Add a personalized note"
+        const addNoteBtn = page.locator([
+            'button:has-text("Add a note")',
+            'button[aria-label*="Add a note"]',
+            'button:has-text("personalized note")',
+        ].join(', ')).first();
+        const addNoteVisible = await addNoteBtn.isVisible({ timeout: 3000 }).catch(() => false);
 
         if (addNoteVisible) {
             await addNoteBtn.click();
             await sleep(jitter(800));
-
-            const noteArea = page.locator('textarea[name="message"], #custom-message').first();
-            await noteArea.fill(truncatedNote);
-            await sleep(jitter(500));
+            const noteArea = page.locator('textarea[name="message"], #custom-message, textarea').first();
+            const areaVisible = await noteArea.isVisible({ timeout: 3000 }).catch(() => false);
+            if (areaVisible) {
+                await noteArea.fill(truncatedNote);
+                await sleep(jitter(500));
+            }
         }
 
-        // Submit the connection request
-        const sendBtn = page.locator(
-            'button[aria-label*="Send invitation"], button:has-text("Send invitation"), button:has-text("Send")'
-        ).last();
+        // Submit — LinkedIn uses various labels: "Send invitation", "Send", "Send now", "Done"
+        const sendBtn = page.locator([
+            'button[aria-label*="Send invitation"]',
+            'button[aria-label*="Send now"]',
+            'button:has-text("Send invitation")',
+            'button:has-text("Send now")',
+            'button:has-text("Send")',
+            'button:has-text("Done")',
+        ].join(', ')).last();
+        const sendVisible = await sendBtn.isVisible({ timeout: 8000 }).catch(() => false);
+        if (!sendVisible) {
+            console.warn(`[LinkedInMessenger] Send button not found in modal for ${profileUrl}`);
+            return false;
+        }
         await sendBtn.click();
         await sleep(jitter(1500));
 
@@ -148,33 +194,94 @@ const sendDirectMessage = async (
 ): Promise<boolean> => {
     try {
         await page.goto(profileUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+        // Wait for profile card to render before looking for Message button
+        await page.waitForSelector('.pv-top-card, .pvs-profile-actions, .ph5, main section', { timeout: 10_000 }).catch(() => {});
         await sleep(jitter(2000));
 
-        const messageBtn = page.locator(
-            'button[aria-label*="Message"], button:has-text("Message")'
-        ).first();
-        const visible = await messageBtn.isVisible({ timeout: 5000 }).catch(() => false);
+        // Find the Message compose link by href — more reliable than text matching since
+        // "Messaging" nav link also contains the substring "Message".
+        // LinkedIn's Message CTA on profiles links to /messaging/compose/?profileUrn=...
+        const composeHref = await page.evaluate(() => {
+            const a = document.querySelector('a[href*="messaging/compose"]') as HTMLAnchorElement | null;
+            return a?.href || null;
+        });
 
-        if (!visible) {
-            console.warn(`[LinkedInMessenger] Message button not found on ${profileUrl}`);
-            return false;
+        if (!composeHref) {
+            // Fallback: try button with exact aria-label
+            const msgBtn = page.locator('button[aria-label="Message"]').first();
+            const btnVisible = await msgBtn.isVisible({ timeout: 3000 }).catch(() => false);
+            if (!btnVisible) {
+                console.warn(`[LinkedInMessenger] Message button not found on ${profileUrl}`);
+                return false;
+            }
+            await msgBtn.click();
+        } else {
+            // Navigate directly to the compose URL — avoids all click overlay issues
+            console.log(`[LinkedInMessenger] Navigating to compose URL: ${composeHref.slice(0, 80)}...`);
+            await page.goto(composeHref, { waitUntil: 'domcontentloaded', timeout: 20_000 }).catch(() => {});
         }
 
-        await messageBtn.click();
+        // Wait for the messaging page / overlay to load
+        await page.waitForSelector(
+            '.msg-form__contenteditable, [role="textbox"], div[contenteditable="true"], .msg-form',
+            { timeout: 12_000 }
+        ).catch(() => {});
         await sleep(jitter(1500));
 
-        // Type the message in the chat compose area
-        const composeArea = page.locator(
-            '.msg-form__contenteditable, div[role="textbox"][aria-label*="Write a message"]'
-        ).first();
-        await composeArea.fill(message);
+        const postClickUrl = page.url();
+        console.log(`[LinkedInMessenger] Messaging URL: ${postClickUrl.slice(0, 100)}`);
+
+        // Comprehensive selectors for the compose text area across all LinkedIn messaging UI variants
+        const composeArea = page.locator([
+            '.msg-form__contenteditable',
+            'div[role="textbox"][aria-label*="Write a message"]',
+            'div[role="textbox"][aria-label*="message"]',
+            'div[contenteditable="true"]',
+            '.msg-form__message-texteditor div[contenteditable]',
+            'div[data-artdeco-is-focused]',
+        ].join(', ')).first();
+        const composeVisible = await composeArea.isVisible({ timeout: 8000 }).catch(() => false);
+        console.log(`[LinkedInMessenger] Compose area visible: ${composeVisible}`);
+        if (!composeVisible) {
+            console.warn(`[LinkedInMessenger] Compose area not found after clicking Message on ${profileUrl}`);
+            return false;
+        }
+        await composeArea.click();
+        await sleep(500);
+        // Use pressSequentially for contenteditable divs — more reliable than fill() for rich text editors
+        await composeArea.pressSequentially(message, { delay: 20 });
         await sleep(jitter(500));
 
-        // Send
-        const sendBtn = page.locator(
-            'button.msg-form__send-button, button[aria-label*="Send message"]'
-        ).first();
-        await sendBtn.click();
+        // Log what text ended up in the compose area
+        const typedText = await composeArea.textContent().catch(() => '');
+        console.log(`[LinkedInMessenger] Typed text (first 60 chars): "${typedText?.slice(0, 60)}"`);
+
+        // Scan ALL buttons after typing to find the submit button (it appears at index 23+ in LinkedIn's DOM)
+        const afterTypingBtns = await page.evaluate(() =>
+            Array.from(document.querySelectorAll('button')).map((b, i) => ({
+                i,
+                text: b.textContent?.trim().slice(0, 50) || '',
+                aria: b.getAttribute('aria-label') || '',
+                type: b.getAttribute('type') || '',
+                disabled: b.disabled,
+            }))
+        );
+
+        // Find the real send button: type=submit, OR aria/text containing "send" (case-insensitive)
+        const submitBtnInfo = afterTypingBtns.find(b =>
+            b.type === 'submit' ||
+            b.aria.toLowerCase().includes('send') ||
+            b.text.toLowerCase() === 'send'
+        );
+
+        if (submitBtnInfo !== undefined) {
+            console.log(`[LinkedInMessenger] Submit button at [${submitBtnInfo.i}]: aria="${submitBtnInfo.aria}" text="${submitBtnInfo.text}"`);
+            await page.locator('button').nth(submitBtnInfo.i).click();
+        } else {
+            // Fallback: Enter key (works in LinkedIn chat overlay; on compose page adds newline but worth trying)
+            console.log(`[LinkedInMessenger] No submit button found — pressing Enter in compose area`);
+            await composeArea.press('Enter');
+        }
         await sleep(jitter(1500));
 
         console.log(`[LinkedInMessenger] Direct message sent to ${profileUrl}`);
