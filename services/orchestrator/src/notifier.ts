@@ -1,0 +1,84 @@
+import axios from 'axios';
+
+export type Channel = 'telegram' | 'whatsapp';
+
+// Resolves the internal HTTP URL for a given channel's bot.
+// Each bot runs an Express server with a POST /api/send endpoint that
+// accepts { chatId, message } and forwards the message to the user.
+function botUrlForChannel(channel: Channel): string | undefined {
+  if (channel === 'telegram') return process.env.TELEGRAM_BOT_URL;
+  if (channel === 'whatsapp') return process.env.WHATSAPP_BOT_URL;
+  return undefined;
+}
+
+// Sends any message to a user on their messaging platform.
+// Used both for approval cards (orchestrator) and change summaries (agent-runner).
+//
+// Parameters:
+//   channel — 'telegram' or 'whatsapp'
+//   chatId  — the platform-specific chat identifier from the original request
+//   message — the text to send (plain text; bots handle any formatting)
+//
+// Returns true if the message was delivered, false if the bot URL is not
+// configured or the send request failed. Never throws — callers shouldn't
+// fail a task just because a notification couldn't be delivered.
+export async function sendToUser(
+  channel: Channel,
+  chatId: string,
+  message: string,
+): Promise<boolean> {
+  const botUrl = botUrlForChannel(channel);
+
+  if (!botUrl) {
+    console.warn(
+      `[notifier] No bot URL configured for channel "${channel}". ` +
+      `Set ${channel.toUpperCase()}_BOT_URL in .env to enable notifications.`,
+    );
+    return false;
+  }
+
+  try {
+    await axios.post(`${botUrl}/api/send`, { chatId, message });
+    console.log(`[notifier] Sent message to ${channel} chat ${chatId}`);
+    return true;
+  } catch (err: any) {
+    console.error(
+      `[notifier] Failed to send message to ${channel} chat ${chatId}:`,
+      err.message,
+    );
+    return false;
+  }
+}
+
+// Formats and sends a summary of code changes made by the agent-runner back
+// to the user. Call this after a task_run transitions to 'completed'.
+//
+// Parameters:
+//   channel     — messaging platform
+//   chatId      — platform-specific chat identifier
+//   issueNumber — the GitHub issue number the task was linked to
+//   repo        — "owner/repo"
+//   prUrl       — URL of the pull request that was opened
+//   summary     — short human-readable description of what changed
+export async function sendChangeSummary(opts: {
+  channel: Channel;
+  chatId: string;
+  issueNumber: number;
+  repo: string;
+  prUrl: string;
+  summary: string;
+}): Promise<boolean> {
+  const { channel, chatId, issueNumber, repo, prUrl, summary } = opts;
+
+  const message = [
+    `✅ Changes are ready for issue #${issueNumber} in \`${repo}\`:`,
+    prUrl,
+    '',
+    '📝 Summary:',
+    summary,
+    '',
+    'Review and merge the pull request above when you\'re happy with the changes.',
+  ].join('\n');
+
+  return sendToUser(channel, chatId, message);
+}

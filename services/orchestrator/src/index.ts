@@ -2,9 +2,9 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { createClient } from '@supabase/supabase-js';
-import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { createOrDedupeIssue } from './githubClient';
+import { sendToUser, Channel } from './notifier';
 
 dotenv.config();
 
@@ -133,31 +133,7 @@ app.post('/api/task', async (req: Request, res: Response): Promise<any> => {
 
     // ── Step 4: Fire approval card to the user's chat (fire-and-forget) ──────
     if (chatId) {
-        let botUrl: string | undefined;
-        if (channel === 'telegram') {
-            botUrl = process.env.TELEGRAM_BOT_URL;
-        } else if (channel === 'whatsapp') {
-            botUrl = process.env.WHATSAPP_BOT_URL;
-        }
-
-        if (botUrl) {
-            axios
-                .post(`${botUrl}/api/send`, { chatId, message: approvalMessage })
-                .then(() =>
-                    console.log(`[Orchestrator] Sent approval card to ${channel} chat ${chatId}`)
-                )
-                .catch((err) =>
-                    console.error(
-                        `[Orchestrator] Failed to send approval card to ${channel}:`,
-                        err.message
-                    )
-                );
-        } else {
-            console.warn(
-                `[Orchestrator] No bot URL configured for channel "${channel}". ` +
-                `Set ${channel.toUpperCase()}_BOT_URL in .env to enable approval cards.`
-            );
-        }
+        sendToUser(channel as Channel, chatId, approvalMessage);
     }
 
     // ── Step 5: Return ACK to gateway ────────────────────────────────────────
