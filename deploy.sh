@@ -30,6 +30,10 @@ ssh -o StrictHostKeyChecking=no $DROPLET_USER@$DROPLET_IP << 'EOF'
   echo "Installing PM2 and Turbo globally (if not present)..."
   npm install -g pm2 turbo
 
+  echo "Configuring firewall for Gateway..."
+  ufw allow 3001/tcp
+  ufw status
+
   echo "Installing system dependencies for Puppeteer (WhatsApp Bot)..."
   apt-get update && apt-get install -y \
     libnss3 \

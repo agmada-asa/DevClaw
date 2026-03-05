@@ -72,14 +72,16 @@ export const handleTextMessage = async (ctx: Context<any>) => {
             return ctx.reply('Could not identify your user ID for login.');
         }
 
-        // Ensure GATEWAY_URL is parsed correctly for the base URL
-        const gatewayUrlStr = process.env.GATEWAY_URL || 'http://localhost:3001/api/ingress/message';
-        let baseUrl = 'http://localhost:3001';
-        try {
-            const parsedUrl = new URL(gatewayUrlStr);
-            baseUrl = `${parsedUrl.protocol}//${parsedUrl.host}`;
-        } catch (e) {
-            // Fallback
+        // Use PUBLIC_URL if provided, else fallback to parsing GATEWAY_URL
+        let baseUrl = process.env.PUBLIC_URL || 'http://localhost:3001';
+        if (!process.env.PUBLIC_URL) {
+            const gatewayUrlStr = process.env.GATEWAY_URL || 'http://localhost:3001/api/ingress/message';
+            try {
+                const parsedUrl = new URL(gatewayUrlStr);
+                baseUrl = `${parsedUrl.protocol}//${parsedUrl.host}`;
+            } catch (e) {
+                // Fallback
+            }
         }
 
         const chatId = ctx.chat?.id;
