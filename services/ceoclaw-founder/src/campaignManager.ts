@@ -260,7 +260,6 @@ const runOutreachSending = async (
             message: p.outreachMessage!,
             firstName: p.firstName,
             lastName: p.lastName,
-            connectionDegree: p.connectionDegree as OutreachTarget['connectionDegree'],
         }));
 
     const results = await sendOutreachBatch(targets);
