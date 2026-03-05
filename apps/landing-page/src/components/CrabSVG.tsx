@@ -61,21 +61,6 @@ export default function CrabSVG({ className, style }: { className?: string; styl
       <ellipse cx="260" cy="215" rx="65" ry="48" fill="#C01020" />
       <ellipse cx="260" cy="210" rx="38" ry="26" fill="#A00E1A" />
 
-      {/* ── Eye stalks ── */}
-      <line x1="228" y1="148" x2="205" y2="118" stroke="#E8192C" strokeWidth="8" strokeLinecap="round" />
-      <line x1="292" y1="148" x2="315" y2="118" stroke="#E8192C" strokeWidth="8" strokeLinecap="round" />
-
-      {/* ── Eyes ── */}
-      <circle cx="200" cy="110" r="16" fill="#E8192C" />
-      <circle cx="200" cy="110" r="9"  fill="#0A0A0A" />
-      <circle cx="196" cy="106" r="3"  fill="white" />
-
-      <circle cx="320" cy="110" r="16" fill="#E8192C" />
-      <circle cx="320" cy="110" r="9"  fill="#0A0A0A" />
-      <circle cx="316" cy="106" r="3"  fill="white" />
-
-      {/* ── Mouth line ── */}
-      <path d="M 238 248 Q 260 260 282 248" stroke="#A00E1A" strokeWidth="4" strokeLinecap="round" fill="none" />
     </svg>
   );
 }
