@@ -44,11 +44,6 @@ export default function LandingPage({ onEnter }: Props) {
       {/* ── Foreground content ── */}
       <div className="relative z-20 flex h-full w-full flex-col items-center justify-center gap-5 px-6 text-center">
 
-        {/* Logo mark */}
-        <div className="w-12 h-12 bg-red-brand rounded-xl flex items-center justify-center shadow-lg shadow-red-brand/50 mb-1">
-          <span className="text-white font-black font-mono text-lg">DC</span>
-        </div>
-
         {/* Title */}
         <h1 className="text-[clamp(4rem,14vw,9rem)] font-black text-white leading-none tracking-tighter drop-shadow-[0_2px_40px_rgba(0,0,0,0.8)]">
           Dev<span className="text-red-brand" style={{ textShadow: '0 0 40px rgba(232,25,44,0.6)' }}>Claw</span>
