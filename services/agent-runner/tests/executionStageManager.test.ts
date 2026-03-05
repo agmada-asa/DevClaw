@@ -128,8 +128,8 @@ const createFactory = (
                     ],
                     notes: ['Updated target file'],
                 }),
-                model: 'deepseek-ai/DeepSeek-V3.2',
-                provider: 'flock',
+                model: 'glm-4.7-flash',
+                provider: 'zai',
             };
         },
     };
@@ -407,8 +407,8 @@ describe('ExecutionStageManager', () => {
                             ],
                             notes: [],
                         }),
-                        model: 'deepseek-ai/DeepSeek-V3.2',
-                        provider: 'flock',
+                        model: 'glm-4.7-flash',
+                        provider: 'zai',
                     }),
                 },
                 reviewer: {
@@ -530,8 +530,8 @@ describe('ExecutionStageManager', () => {
                             patch: 'diff --git a/apps/web/src/App.tsx b/apps/web/src/App.tsx\\n--- a/apps/web/src/App.tsx\\n+++ b/apps/web/src/App.tsx\\n@@ -1 +1 @@\\n-before\\n+after',
                             notes: [],
                         }),
-                        model: 'deepseek-ai/DeepSeek-V3.2',
-                        provider: 'flock',
+                        model: 'glm-4.7-flash',
+                        provider: 'zai',
                     }),
                 },
                 reviewer: {
@@ -584,8 +584,8 @@ describe('ExecutionStageManager', () => {
                     name: 'FrontendGenerator',
                     run: async () => ({
                         content: '{ "summary": "oops", "files": [{"path":"apps/web/src/App.tsx","content":"after\\n"}], "notes": ["ok"], }',
-                        model: 'deepseek-ai/DeepSeek-V3.2',
-                        provider: 'flock',
+                        model: 'glm-4.7-flash',
+                        provider: 'zai',
                     }),
                 },
                 reviewer: {
@@ -691,8 +691,8 @@ describe('ExecutionStageManager', () => {
                             ],
                             notes: [],
                         }),
-                        model: 'deepseek-ai/DeepSeek-V3.2',
-                        provider: 'flock',
+                        model: 'glm-4.7-flash',
+                        provider: 'zai',
                     }),
                 },
                 reviewer: {
