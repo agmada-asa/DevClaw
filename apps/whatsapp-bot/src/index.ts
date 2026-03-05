@@ -3,8 +3,9 @@ import qrcode from 'qrcode-terminal';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import express from 'express';
+import path from 'path';
 
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3001/api/ingress/message';
 

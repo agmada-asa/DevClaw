@@ -2,8 +2,9 @@ import { Telegraf, Context } from 'telegraf';
 import axios from 'axios';
 import dotenv from 'dotenv';
 import express from 'express';
+import path from 'path';
 
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 
