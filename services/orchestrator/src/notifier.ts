@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Channel } from './types';
+import { Channel, SendResult } from './types';
 
 export type { Channel };
 
@@ -43,14 +43,14 @@ const BOT_URL: Record<Channel, string | undefined> = {
 //   chatId  — the platform-specific chat identifier from the original request
 //   message — the text to send (plain text; bots handle any formatting)
 //
-// Returns true if the message was delivered, false if the bot URL is not
-// configured or the send request failed. Never throws — callers shouldn't
-// fail a task just because a notification couldn't be delivered.
+// Returns a SendResult so callers know exactly why a delivery failed.
+// Never throws — callers shouldn't fail a task just because a notification
+// couldn't be delivered, but they can log or persist the failure reason.
 export async function sendToUser(
   channel: Channel,
   chatId: string,
   message: string,
-): Promise<boolean> {
+): Promise<SendResult> {
   const botUrl = BOT_URL[channel];
 
   if (!botUrl) {
@@ -58,7 +58,7 @@ export async function sendToUser(
       `[notifier] No bot URL configured for channel "${channel}". ` +
       `Set ${channel.toUpperCase()}_BOT_URL in .env to enable notifications.`,
     );
-    return false;
+    return { ok: false, reason: 'no_bot_url' };
   }
 
   const safeMessage = truncate(message, channel);
@@ -71,7 +71,7 @@ export async function sendToUser(
     try {
       await axios.post(`${botUrl}/api/send`, { chatId, message: safeMessage });
       console.log(`[notifier] Sent message to ${channel} chat ${chatId}`);
-      return true;
+      return { ok: true };
     } catch (err: any) {
       lastErr = err;
       if (attempt <= MAX_SEND_RETRIES) {
@@ -87,7 +87,7 @@ export async function sendToUser(
     `[notifier] All ${1 + MAX_SEND_RETRIES} attempts failed for ${channel} chat ${chatId}:`,
     lastErr?.message,
   );
-  return false;
+  return { ok: false, reason: 'send_failed', error: lastErr?.message };
 }
 
 // Formats and sends a summary of code changes made by the agent-runner back
@@ -107,7 +107,7 @@ export async function sendChangeSummary(opts: {
   repo: string;
   prUrl: string;
   summary: string;
-}): Promise<boolean> {
+}): Promise<SendResult> {
   const { channel, chatId, issueNumber, repo, prUrl, summary } = opts;
 
   const message = [
