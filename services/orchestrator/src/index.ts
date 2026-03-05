@@ -190,7 +190,7 @@ app.post('/api/task', async (req: Request, res: Response): Promise<any> => {
             console.error('[Orchestrator] Failed to fetch architecture plan:', formatErrorDetails(err));
             // Send failure message directly to chat
             if (chatId) {
-                const failureMessage = `❌ Oh no! I failed to generate the architecture plan for issue #${issueNumber}.\nError: ${err?.message || 'Gateway timeout or planner unavailable.'}`;
+                const failureMessage = `❌ *Plan generation failed*\n\nCouldn't create an architecture plan for issue #${issueNumber}.\n_${err?.message || 'Gateway timeout or planner unavailable.'}_\n\nTry again with /task`;
                 const botUrl = resolveBotUrl(channel);
 
                 if (botUrl) {
@@ -235,24 +235,24 @@ app.post('/api/task', async (req: Request, res: Response): Promise<any> => {
         const formattedRisks = plan?.riskFlags?.length ? plan.riskFlags.map(r => `⚠️ ${r}`).join('\n') : '_None_';
 
         const approvalMessage = [
-            `${issueLabel} in \`${repoFullName}\`:`,
-            `${issueUrl}`,
+            `🤖 *DevClaw — Plan Ready*`,
+            '',
+            `${issueLabel}`,
+            `🔗 ${issueUrl}`,
             '',
             `📋 *Task:* ${description}`,
             '',
-            `🏗️ *Architecture Plan (${plan?.planId || 'unknown'})*`,
+            `🏗️ *Architecture Plan*`,
             `${plan?.summary || 'No summary available.'}`,
             '',
-            `*Affected Files:*`,
+            `📂 *Files to change:*`,
             `${formattedFiles}`,
             '',
-            `*Risk Flags:*`,
-            `${formattedRisks}`,
-            '',
-            `When you're ready, reply:`,
-            `  /approve ${plan?.planId} — to start implementation`,
-            `  /refine ${plan?.planId} [instructions] — to adjust the plan`,
-            `  /reject ${plan?.planId} — to cancel`,
+            ...(plan?.riskFlags?.length ? [`⚠️ *Risks:*`, `${formattedRisks}`, ''] : []),
+            `─────────────────────`,
+            `✅ /approve ${plan?.planId}`,
+            `✏️ /refine ${plan?.planId} [your changes]`,
+            `❌ /reject ${plan?.planId}`,
         ].join('\n');
 
         // ── Step 6: Fire approval card to the user's chat (fire-and-forget) ──────
@@ -312,9 +312,10 @@ app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
         const botUrl = resolveBotUrl(updated.channel);
         if (botUrl) {
             const inProgressMessage = [
-                `✅ Plan ${updated.plan_id} approved.`,
-                `🛠️ Started implementation for ${updated.repo || 'your repository'}.`,
-                'The agents are now working on this. I will send another update when execution completes or if it fails.',
+                `⚡ *Execution started!*`,
+                '',
+                `The DevClaw agents are now implementing your task for *${updated.repo || 'your repository'}*.`,
+                `_I'll notify you when the code is ready with a link to the branch._`,
             ].join('\n');
             axios
                 .post(`${botUrl}/api/send`, {
@@ -433,6 +434,26 @@ app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
                     `[Orchestrator] Execution branch status for run ${updated.id}: ` +
                     `branch=${branchName} pushed=${String(pushed)}`
                 );
+                if (updated.chat_id) {
+                    const botUrl = resolveBotUrl(updated.channel);
+                    if (botUrl) {
+                        const branchUrl = `https://github.com/${updated.repo}/tree/${branchName}`;
+                        const completionMessage = [
+                            `✅ *Code is ready!*`,
+                            '',
+                            `Your task has been implemented for *${updated.repo}*.`,
+                            '',
+                            `🌿 *Branch:* \`${branchName}\``,
+                            `🔗 ${pushed ? branchUrl : '_Branch not pushed_'}`,
+                            '',
+                            `_Review the changes and merge when ready._`,
+                        ].join('\n');
+                        axios.post(`${botUrl}/api/send`, {
+                            chatId: updated.chat_id,
+                            message: completionMessage,
+                        }, { timeout: ORCHESTRATOR_BOT_SEND_TIMEOUT_MS }).catch(() => { });
+                    }
+                }
             }
             console.log(`[Orchestrator] Task ${updated.id} execution completed asynchronously.`);
         } catch (err: any) {
@@ -442,7 +463,7 @@ app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
                 if (botUrl) {
                     axios.post(`${botUrl}/api/send`, {
                         chatId: updated.chat_id,
-                        message: `❌ Execution for plan ${updated.plan_id} failed: ${err?.message || 'Unknown error'}`,
+                        message: `❌ *Execution failed*\n\nSomething went wrong while implementing your task.\n_${err?.message || 'Unknown error'}_\n\nPlease try again with /task`,
                     }, { timeout: ORCHESTRATOR_BOT_SEND_TIMEOUT_MS }).catch(() => { });
                 }
             }
@@ -523,7 +544,7 @@ app.post('/api/refine', async (req: Request, res: Response): Promise<any> => {
             console.error('[Orchestrator] Failed to fetch refined architecture plan:', formatErrorDetails(err));
             if (chatId || existingRun.chat_id) {
                 const targetChatId = chatId || existingRun.chat_id;
-                const failureMessage = `❌ I failed to refine the architecture plan for issue #${existingRun.issue_number}.\nError: ${err?.message || 'Gateway timeout or planner unavailable.'}`;
+                const failureMessage = `❌ *Refinement failed*\n\nCouldn't update the plan for issue #${existingRun.issue_number}.\n_${err?.message || 'Gateway timeout or planner unavailable.'}_\n\nTry again with *refine [your instructions]*`;
                 const targetChannel = channel || existingRun.channel;
                 const botUrl = resolveBotUrl(targetChannel);
 
@@ -552,24 +573,24 @@ app.post('/api/refine', async (req: Request, res: Response): Promise<any> => {
         const formattedRisks = refinedPlan?.riskFlags?.length ? refinedPlan.riskFlags.map(r => `⚠️ ${r}`).join('\n') : '_None_';
 
         const approvalMessage = [
-            `${issueLabel} in \`${existingRun.repo}\`:`,
-            `${existingRun.issue_url}`,
+            `🔄 *DevClaw — Plan Updated*`,
+            '',
+            `${issueLabel}`,
+            `🔗 ${existingRun.issue_url}`,
             '',
             `📋 *Task:* ${existingRun.description}`,
             '',
-            `🏗️ *New Architecture Plan (${refinedPlan?.planId || 'unknown'})*`,
+            `🏗️ *New Architecture Plan*`,
             `${refinedPlan?.summary || 'No summary available.'}`,
             '',
-            `*Affected Files:*`,
+            `📂 *Files to change:*`,
             `${formattedFiles}`,
             '',
-            `*Risk Flags:*`,
-            `${formattedRisks}`,
-            '',
-            `When you're ready, reply:`,
-            `  /approve ${refinedPlan?.planId} — to start implementation`,
-            `  /refine ${refinedPlan?.planId} [instructions] — to adjust the plan`,
-            `  /reject ${refinedPlan?.planId} — to cancel`,
+            ...(refinedPlan?.riskFlags?.length ? [`⚠️ *Risks:*`, `${formattedRisks}`, ''] : []),
+            `─────────────────────`,
+            `✅ /approve ${refinedPlan?.planId}`,
+            `✏️ /refine ${refinedPlan?.planId} [your changes]`,
+            `❌ /reject ${refinedPlan?.planId}`,
         ].join('\n');
 
         const botChannel = channel || existingRun.channel;
