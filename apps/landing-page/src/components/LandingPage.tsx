@@ -6,7 +6,7 @@ interface Props {
 
 export default function LandingPage({ onEnter }: Props) {
   return (
-    <div className="relative min-h-screen bg-[#050505] flex flex-col items-center justify-center overflow-hidden select-none">
+    <div className="relative h-screen bg-[#050505] flex flex-col items-center justify-center overflow-hidden select-none">
 
       {/* ── Film grain overlay ── */}
       <div className="grain-overlay" aria-hidden="true" />
@@ -42,7 +42,7 @@ export default function LandingPage({ onEnter }: Props) {
       </div>
 
       {/* ── Foreground content ── */}
-      <div className="relative z-20 flex flex-col items-center gap-5 px-6 text-center pb-52">
+      <div className="relative z-20 flex h-full w-full flex-col items-center justify-center gap-5 px-6 text-center">
 
         {/* Logo mark */}
         <div className="w-12 h-12 bg-red-brand rounded-xl flex items-center justify-center shadow-lg shadow-red-brand/50 mb-1">
@@ -92,7 +92,7 @@ export default function LandingPage({ onEnter }: Props) {
       </div>
 
       {/* Corner watermark */}
-      <p className="absolute bottom-5 right-6 text-[11px] text-white/15 font-mono z-20 tracking-wider">
+      <p className="absolute bottom-5 left-1/2 -translate-x-1/2 text-center text-[11px] text-white/15 font-mono z-20 tracking-wider">
         UK AI Agent Hack EP4 · OpenClaw
       </p>
     </div>
