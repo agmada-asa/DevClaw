@@ -30,6 +30,24 @@ ssh -o StrictHostKeyChecking=no $DROPLET_USER@$DROPLET_IP << 'EOF'
   echo "Installing PM2 and Turbo globally (if not present)..."
   npm install -g pm2 turbo
 
+  echo "Installing system dependencies for Puppeteer (WhatsApp Bot)..."
+  apt-get update && apt-get install -y \
+    libnss3 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2t64 \
+    libcairo2 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0
+
   echo "Installing project dependencies..."
   npm install
 
