@@ -3,6 +3,24 @@ import { Channel } from './types';
 
 export type { Channel };
 
+// Per-platform character limits for outgoing messages.
+// Telegram: 4096 chars. WhatsApp: 65536 chars (practical limit ~4096 for readability).
+// When a message exceeds the limit it is truncated with a notice so the user
+// knows to check the PR directly rather than silently receiving a cut-off message.
+const MAX_LENGTH: Record<Channel, number> = {
+  telegram: 4096,
+  whatsapp: 4096,
+};
+const TRUNCATION_SUFFIX = '\n\n[Message truncated — see the PR for the full summary.]';
+
+// Truncates a message to the channel's character limit.
+// Keeps the suffix within the limit so the final message always fits.
+function truncate(message: string, channel: Channel): string {
+  const limit = MAX_LENGTH[channel];
+  if (message.length <= limit) return message;
+  return message.slice(0, limit - TRUNCATION_SUFFIX.length) + TRUNCATION_SUFFIX;
+}
+
 // Maps each channel to its bot's internal HTTP URL env var.
 // Each bot runs an Express server with POST /api/send that accepts { chatId, message }.
 // Adding a new channel: add it to the Channel union in types.ts and add an entry here.
