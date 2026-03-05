@@ -31,6 +31,22 @@ module.exports = {
       env: {
         NODE_ENV: 'production'
       }
+    },
+    {
+      name: 'telegram-bot',
+      script: 'apps/telegram-bot/dist/index.js',
+      cwd: '/var/www/devclaw',
+      env: {
+        NODE_ENV: 'production'
+      }
+    },
+    {
+      name: 'whatsapp-bot',
+      script: 'apps/whatsapp-bot/dist/index.js',
+      cwd: '/var/www/devclaw',
+      env: {
+        NODE_ENV: 'production'
+      }
     }
   ]
 };
