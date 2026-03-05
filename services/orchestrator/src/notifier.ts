@@ -13,6 +13,12 @@ const MAX_LENGTH: Record<Channel, number> = {
 };
 const TRUNCATION_SUFFIX = '\n\n[Message truncated — see the PR for the full summary.]';
 
+// How many times to retry a failed send before giving up.
+// Covers transient bot restarts or brief network blips.
+// Does not retry on missing bot URL (misconfiguration, not transient).
+const MAX_SEND_RETRIES = 2;
+const RETRY_DELAY_MS = 1000;
+
 // Truncates a message to the channel's character limit.
 // Keeps the suffix within the limit so the final message always fits.
 function truncate(message: string, channel: Channel): string {
