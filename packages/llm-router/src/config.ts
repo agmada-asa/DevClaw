@@ -25,12 +25,17 @@ export interface ModelConfig {
   policy: RolePolicy;
 }
 
-const GENERATOR_MODEL = process.env.GENERATOR_MODEL || 'deepseek-v3.2';
-const REVIEWER_MODEL = process.env.REVIEWER_MODEL || 'z-ai/glm-4.7-flash';
+// Z.AI GLM models used across all roles.
+// Override via env vars to switch between GLM variants without a redeploy.
+const ZAI_GENERATOR_MODEL = process.env.GENERATOR_MODEL || 'glm-4.7-flash';
+const ZAI_REVIEWER_MODEL  = process.env.REVIEWER_MODEL  || 'glm-4.7-flash';
+
+// Fallback: hit the same GLM model via OpenRouter if Z.AI direct is unavailable.
+const ZAI_OPENROUTER_FALLBACK_MODEL = process.env.ZAI_OPENROUTER_MODEL || 'z-ai/glm-4.7-flash';
 
 const GENERATOR_POLICY: RolePolicy = {
   timeoutMs: 1200_000,
-  maxRetries: 1,
+  maxRetries: 2,
   fallbackOn: ['timeout', 'http5xx', 'http429'],
 };
 
@@ -41,66 +46,62 @@ const REVIEWER_POLICY: RolePolicy = {
 };
 
 // This is the single source of truth for which model handles which job.
-// To swap a model, provider, or policy for a role, change it here.
+// Z.AI GLM is the core engine for every role. OpenRouter is the fallback
+// route to the same GLM models if the Z.AI direct API is unavailable.
 export const MODEL_CONFIG: Record<ModelRole, ModelConfig> = {
-  // Legacy generator route, aligned with paired frontend/backend generators.
+  // Legacy generator route — Z.AI GLM generates the code patch.
   generator: {
-    provider: 'flock',
-    modelId: GENERATOR_MODEL,
+    provider: 'zai',
+    modelId: ZAI_GENERATOR_MODEL,
+    fallback: { provider: 'openrouter', modelId: ZAI_OPENROUTER_FALLBACK_MODEL },
     policy: GENERATOR_POLICY,
   },
 
-  // Legacy reviewer route, aligned with paired frontend/backend reviewers.
+  // Legacy reviewer route — Z.AI GLM reviews the generated patch.
   reviewer: {
-    provider: 'openrouter',
-    modelId: REVIEWER_MODEL,
-    fallback: {
-      provider: 'flock',
-      modelId: GENERATOR_MODEL,
-    },
+    provider: 'zai',
+    modelId: ZAI_REVIEWER_MODEL,
+    fallback: { provider: 'openrouter', modelId: ZAI_OPENROUTER_FALLBACK_MODEL },
     policy: REVIEWER_POLICY,
   },
 
-  // Frontend generator is pinned to FLock DeepSeek V3.2.
+  // Frontend generator — Z.AI GLM generates frontend code patches.
   frontend_generator: {
-    provider: 'flock',
-    modelId: GENERATOR_MODEL,
+    provider: 'zai',
+    modelId: ZAI_GENERATOR_MODEL,
+    fallback: { provider: 'openrouter', modelId: ZAI_OPENROUTER_FALLBACK_MODEL },
     policy: GENERATOR_POLICY,
   },
 
-  // Frontend reviewer is pinned to Z.AI GLM.
+  // Frontend reviewer — Z.AI GLM reviews frontend patches.
   frontend_reviewer: {
-    provider: 'openrouter',
-    modelId: REVIEWER_MODEL,
-    fallback: {
-      provider: 'flock',
-      modelId: GENERATOR_MODEL,
-    },
+    provider: 'zai',
+    modelId: ZAI_REVIEWER_MODEL,
+    fallback: { provider: 'openrouter', modelId: ZAI_OPENROUTER_FALLBACK_MODEL },
     policy: REVIEWER_POLICY,
   },
 
-  // Backend generator is pinned to FLock DeepSeek V3.2.
+  // Backend generator — Z.AI GLM generates backend code patches.
   backend_generator: {
-    provider: 'flock',
-    modelId: GENERATOR_MODEL,
+    provider: 'zai',
+    modelId: ZAI_GENERATOR_MODEL,
+    fallback: { provider: 'openrouter', modelId: ZAI_OPENROUTER_FALLBACK_MODEL },
     policy: GENERATOR_POLICY,
   },
 
-  // Backend reviewer is pinned to Z.AI GLM.
+  // Backend reviewer — Z.AI GLM reviews backend patches.
   backend_reviewer: {
-    provider: 'openrouter',
-    modelId: REVIEWER_MODEL,
-    fallback: {
-      provider: 'flock',
-      modelId: GENERATOR_MODEL,
-    },
+    provider: 'zai',
+    modelId: ZAI_REVIEWER_MODEL,
+    fallback: { provider: 'openrouter', modelId: ZAI_OPENROUTER_FALLBACK_MODEL },
     policy: REVIEWER_POLICY,
   },
 
-  // Coordinates workflow — needs faster responses, one retry is enough.
+  // Orchestrator — Z.AI GLM coordinates the workflow. One retry before giving up.
   orchestrator: {
-    provider: 'flock',
-    modelId: 'deepseek-v3.2',
+    provider: 'zai',
+    modelId: 'glm-4.7-flash',
+    fallback: { provider: 'openrouter', modelId: ZAI_OPENROUTER_FALLBACK_MODEL },
     policy: {
       timeoutMs: 600_000,
       maxRetries: 1,
@@ -108,10 +109,11 @@ export const MODEL_CONFIG: Record<ModelRole, ModelConfig> = {
     },
   },
 
-  // Produces the architecture plan on Z.AI. One retry before giving up.
+  // Planner — Z.AI GLM produces the architecture plan. One retry before giving up.
   planner: {
     provider: 'zai',
     modelId: 'glm-4.7-flash',
+    fallback: { provider: 'openrouter', modelId: ZAI_OPENROUTER_FALLBACK_MODEL },
     policy: {
       timeoutMs: 600_000,
       maxRetries: 1,
@@ -119,14 +121,11 @@ export const MODEL_CONFIG: Record<ModelRole, ModelConfig> = {
     },
   },
 
-  // CEOClaw: Qualifies LinkedIn prospects — analyzes company fit for DevClaw.
+  // CEOClaw: Qualifies LinkedIn prospects — Z.AI GLM analyzes company fit for DevClaw.
   prospect_qualifier: {
-    provider: 'openrouter',
-    modelId: process.env.QUALIFIER_MODEL || 'z-ai/glm-4.7-flash',
-    fallback: {
-      provider: 'flock',
-      modelId: GENERATOR_MODEL,
-    },
+    provider: 'zai',
+    modelId: process.env.QUALIFIER_MODEL || 'glm-4.7-flash',
+    fallback: { provider: 'openrouter', modelId: ZAI_OPENROUTER_FALLBACK_MODEL },
     policy: {
       timeoutMs: 60_000,
       maxRetries: 2,
@@ -134,14 +133,11 @@ export const MODEL_CONFIG: Record<ModelRole, ModelConfig> = {
     },
   },
 
-  // CEOClaw: Writes personalized LinkedIn outreach messages for DevClaw.
+  // CEOClaw: Writes personalized LinkedIn outreach messages — Z.AI GLM generates copy.
   outreach_writer: {
-    provider: 'flock',
-    modelId: GENERATOR_MODEL,
-    fallback: {
-      provider: 'openrouter',
-      modelId: process.env.QUALIFIER_MODEL || 'z-ai/glm-4.7-flash',
-    },
+    provider: 'zai',
+    modelId: 'glm-4.7-flash',
+    fallback: { provider: 'openrouter', modelId: ZAI_OPENROUTER_FALLBACK_MODEL },
     policy: {
       timeoutMs: 60_000,
       maxRetries: 1,

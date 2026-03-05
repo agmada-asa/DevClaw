@@ -2,7 +2,6 @@ import axios from 'axios';
 import { ChatRequest, ChatResponse, Provider } from './types';
 import { MODEL_CONFIG, FallbackTrigger } from './config';
 import { RouterError, ProviderHttpError, ProviderTimeoutError } from './errors';
-import { callFlock } from './providers/flock';
 import { callVenice } from './providers/venice';
 import { callZai } from './providers/zai';
 import { callOpenRouter } from './providers/openrouter';
@@ -64,7 +63,6 @@ async function callProvider(
   try {
     const { messages, temperature, maxTokens } = req;
     switch (provider) {
-      case 'flock': return await callFlock(modelId, messages, temperature, maxTokens, timeoutMs);
       case 'venice': return await callVenice(modelId, messages, temperature, maxTokens, timeoutMs);
       case 'zai': return await callZai(modelId, messages, temperature, maxTokens, timeoutMs);
       case 'openrouter': return await callOpenRouter(modelId, messages, temperature, maxTokens, timeoutMs);

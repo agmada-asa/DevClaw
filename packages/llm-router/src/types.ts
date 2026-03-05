@@ -13,7 +13,8 @@ export type ModelRole =
   | 'outreach_writer';
 
 // The actual AI provider companies.
-export type Provider = 'flock' | 'venice' | 'zai' | 'openrouter';
+// Z.AI is the core engine. OpenRouter is the fallback route to the same GLM models.
+export type Provider = 'venice' | 'zai' | 'openrouter';
 
 // A single message in a conversation — same shape as OpenAI's API format,
 // which all three providers follow.

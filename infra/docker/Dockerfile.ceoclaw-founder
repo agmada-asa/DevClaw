@@ -20,9 +20,10 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
-# Tell Playwright to use the system Chromium
-ENV PLAYWRIGHT_BROWSERS_PATH=/usr/bin
+# Skip Playwright's own browser download — we use the system Chromium installed above.
+# CHROMIUM_PATH is read by linkedinProspector / linkedinMessenger when launching the browser.
 ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV CHROMIUM_PATH=/usr/bin/chromium
 
 WORKDIR /app
 

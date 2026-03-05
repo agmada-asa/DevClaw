@@ -1,19 +1,45 @@
-# DevClaw Monorepo
+# DevClaw
 
-Hackathon monorepo for DevClaw (product layer) + CEOClaw (founder layer).
+An AI-powered developer productivity platform that automates the full GitHub PR workflow.
 
-## Goals for This Structure
-- Ship the end-to-end dev loop quickly: Telegram -> triage -> approval gate -> generator/reviewer loop -> GitHub PR.
-- Keep founder automation isolated so growth experiments do not block core coding flow.
-- Enable 3-4 parallel contributors with clear service ownership boundaries.
+---
 
-## Repository Layout
+## What It Does
+
+DevClaw turns a plain-language task description into a merged GitHub PR with no manual coding required:
+
+1. **Describe** — Developer sends a message to the Telegram bot (e.g. "fix the login bug" or "add dark mode")
+2. **Issue** — DevClaw creates a GitHub issue automatically
+3. **Plan** — AI generates a full architecture plan (files to change, approach, risk flags)
+4. **Approve** — Human reviews and approves the plan via Telegram
+5. **Generate** — AI Generator agent writes the code changes
+6. **Review** — AI Reviewer agent checks the code for correctness and quality
+7. **PR** — A GitHub pull request is opened, ready to merge
+
+---
+
+## Features
+
+- Telegram bot interface — no app installs for end users
+- GitHub issue auto-creation from natural language
+- AI architecture planning with risk flags and file-level blueprints
+- Human approval gate before any code is written
+- Generator + Reviewer agent pair for code quality
+- Automatic GitHub PR creation with summary and walkthrough
+- Multi-provider LLM routing (FLock, Venice, Z.AI, OpenRouter) with automatic fallback
+- Redis-backed session memory across conversations
+- Supabase persistence for plans, runs, and audit history
+- Dashboard UI for judges/demo — shows agent activity, PR status, MRR
+
+---
+
+## Architecture
 
 ```text
 .
 ├── apps/
 │   ├── dashboard/                # Judge/demo UI: agent activity, PR status, MRR
-│   ├── landing-page/             # CEOClaw-generated marketing site
+│   ├── landing-page/             # Marketing site
 │   └── telegram-bot/             # Bot command handlers and chat UX
 ├── services/
 │   ├── openclaw-gateway/         # Interface adapter and session routing
@@ -23,15 +49,15 @@ Hackathon monorepo for DevClaw (product layer) + CEOClaw (founder layer).
 │   ├── agent-runner/             # Generator/Reviewer pair orchestration
 │   ├── integration-verifier/     # Cross-service test and validation runner
 │   ├── report-generator/         # PR summary, changelog, walkthrough output
-│   ├── ceoclaw-founder/          # Prospecting, outreach, landing updates
+│   ├── ceoclaw-founder/          # Autonomous founder loop: sales, marketing, product, ops
 │   └── billing-webhooks/         # Stripe events and MRR ledger updates
 ├── packages/
 │   ├── contracts/                # Shared schemas and typed message contracts
 │   ├── agent-runtime/            # Agent lifecycle, retries, tool execution policies
-│   ├── llm-router/               # FLock + Venice + Z.AI provider routing
+│   ├── llm-router/               # FLock + Venice + Z.AI provider routing with fallback
 │   ├── memory/                   # Session memory abstraction (Redis + encrypted store)
 │   ├── github-client/            # GitHub issue, branch, PR orchestration
-│   ├── observability/            # Anyway SDK wrappers and trace helpers
+│   ├── observability/            # Trace helpers and SDK wrappers
 │   ├── config/                   # Env loading, feature flags, runtime config
 │   ├── ui/                       # Shared UI primitives for dashboard + landing page
 │   ├── utils/                    # Common utility helpers
@@ -41,33 +67,36 @@ Hackathon monorepo for DevClaw (product layer) + CEOClaw (founder layer).
 │   ├── github/                   # CI workflow templates and action scripts
 │   ├── scripts/                  # Infra bootstrap scripts
 │   └── secrets/                  # Secret templates (no real credentials committed)
-├── docs/
-│   ├── architecture/             # System architecture and flow specs
-│   ├── decisions/                # Lightweight ADRs
-│   └── runbooks/                 # Demo and incident runbooks
-├── tools/
-│   ├── dev/                      # Local developer tooling
-│   └── ci/                       # CI helper scripts
-├── package.json
-└── turbo.json
+└── docs/
+    ├── architecture/             # System architecture and flow specs
+    ├── decisions/                # Lightweight ADRs
+    └── runbooks/                 # Demo and incident runbooks
 ```
 
-## Priority Build Order
-1. `services/openclaw-gateway` + `apps/telegram-bot`
-2. `services/orchestrator` + `services/architecture-planner`
-3. `services/agent-runner` + `services/report-generator`
-4. `services/integration-verifier`
-5. `services/ceoclaw-founder` + `services/billing-webhooks`
+---
+
+## Quick Start
+
+### Prerequisites
+- Node.js 22+
+- Redis (for session memory)
+- Supabase project (for persistence)
+- Telegram bot token
+- GitHub token
+
+### Run full stack
+```bash
+npm install
+docker compose -f infra/docker/docker-compose.yml up
+```
+
+---
 
 ## Workspace Commands
-- `npm install`
-- `npm run dev`
-- `npm run build`
-- `npm run test`
 
-## Architecture Docs
-- `docs/architecture/system-architecture.md`
-- `docs/architecture/hackathon-scope.md`
-- `docs/architecture/contracts.md`
-- `docs/decisions/0001-monorepo-boundaries.md`
-- `docs/testing-bots.md` (Ingress Interface Testing Guide)
+```bash
+npm install          # Install all dependencies
+npm run dev          # Start all services in dev mode
+npm run build        # Build all packages and services
+npm run test         # Run all tests
+```

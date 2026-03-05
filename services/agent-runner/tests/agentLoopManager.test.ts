@@ -31,8 +31,8 @@ describe('AgentLoopManager', () => {
             if (request.role === 'frontend_generator') {
                 return {
                     content: `generator output ${reviewCount + 1}`,
-                    model: 'deepseek-ai/DeepSeek-V3.2',
-                    provider: 'flock',
+                    model: 'glm-4.7-flash',
+                    provider: 'zai',
                 };
             }
 
@@ -68,7 +68,7 @@ describe('AgentLoopManager', () => {
         expect(report?.approvedSubTasks).toBe(1);
         expect(report?.subTasks[0].iterations).toBe(2);
         expect(report?.subTasks[0].finalDecision).toBe('APPROVED');
-        expect(report?.subTasks[0].trace[0].generator.provider).toBe('flock');
+        expect(report?.subTasks[0].trace[0].generator.provider).toBe('zai');
         expect(report?.subTasks[0].trace[0].reviewer.provider).toBe('zai');
 
         expect(mockChat).toHaveBeenNthCalledWith(
@@ -94,8 +94,8 @@ describe('AgentLoopManager', () => {
             if (request.role === 'backend_generator') {
                 return {
                     content: 'backend output',
-                    model: 'deepseek-ai/DeepSeek-V3.2',
-                    provider: 'flock',
+                    model: 'glm-4.7-flash',
+                    provider: 'zai',
                 };
             }
 

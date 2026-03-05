@@ -9,7 +9,7 @@ export async function callZai(
   modelId: string,
   messages: ChatMessage[],
   temperature = 0.2,
-  maxTokens = 4_096_000,
+  maxTokens = 4096,
   timeoutMs?: number,
 ): Promise<ChatResponse> {
   const apiKey = process.env.ZAI_API_KEY;

@@ -25,8 +25,7 @@ import { routeNextTask } from './taskRouter';
 import { generateIdea, buildLandingPage } from './productDomain';
 import { writeSeoContent, planCampaign } from './marketingDomain';
 import { analyzeMetrics, processFeedback, planIteration } from './operationsDomain';
-import { runCampaign, createCampaign } from './campaignManager';
-import { resumeCampaignSending } from './campaignManager';
+import { createCampaign, discoverAndQualify, resumeCampaignSending } from './campaignManager';
 import { getProspectsByCampaign, listCampaigns } from './prospectStore';
 import {
     loadBusinessState,
@@ -41,6 +40,8 @@ import {
     RoutedTask,
     TaskRecord,
     TaskOutput,
+    TaskType,
+    TaskStatus,
     LoopStatus,
     MRR_GOAL,
 } from './founderTypes';
@@ -76,15 +77,15 @@ const executeTask = async (task: RoutedTask, state: BusinessState): Promise<Task
             return planCampaign(state);
 
         case 'sales.find_prospects': {
-            // Create a new LinkedIn campaign and run discovery + qualification
+            // Create a campaign and run discovery + qualification + message generation only.
+            // Sending is deferred to a separate sales.send_outreach iteration.
             const campaign = await createCampaign({
                 name: `CEOClaw auto-campaign ${new Date().toISOString().split('T')[0]}`,
                 searchQuery: process.env.CEOCLAW_DEFAULT_SEARCH_QUERY || 'CTO startup software',
                 maxProspects: parsePositiveInt(process.env.CEOCLAW_MAX_PROSPECTS_PER_CAMPAIGN, 20),
                 minFitScore: parsePositiveInt(process.env.CEOCLAW_MIN_FIT_SCORE, 65),
             });
-            // Run only discovery + qualification stages (not sending yet)
-            const result = await runCampaign(campaign.campaignId);
+            const result = await discoverAndQualify(campaign.campaignId);
             return {
                 prospectsFound: result.prospectsDiscovered,
                 campaignId: campaign.campaignId,
@@ -300,8 +301,8 @@ export const getLoopStatus = async (): Promise<LoopStatus> => {
         intervalMs,
         iterationsRun,
         lastIterationAt,
-        lastTaskType: lastTaskType as any,
-        lastTaskStatus: lastTaskStatus as any,
+        lastTaskType: lastTaskType as TaskType | undefined,
+        lastTaskStatus: lastTaskStatus as TaskStatus | undefined,
         currentMrr: state.mrr,
         mrrGoal: MRR_GOAL,
         mrrProgress: `${mrrPct}%`,
