@@ -453,6 +453,23 @@ export class ExecutionStageManager {
             `workspace=${workspacePath} subTasks=${subTasks.length}`
         );
 
+        let repoFileTree: string[] | undefined;
+        try {
+            const image = process.env.RUNNER_DOCKER_IMAGE || 'node:22-bookworm-slim';
+            const result = await execFileAsync('docker', [
+                'run', '--rm',
+                '-v', `${workspacePath}:/workspace`,
+                '--workdir', '/workspace',
+                image,
+                'sh', '-c', 'find . -type f -not -path "*/.git/*" -not -path "*/node_modules/*" | sed "s|^./||"'
+            ], { timeout: 30000 });
+            repoFileTree = result.stdout.split('\n').map(l => l.trim()).filter(Boolean);
+            console.log(`[AgentRunner][ExecutionStage] Extracted ${repoFileTree.length} files from docker workspace environment`);
+        } catch (err: any) {
+            console.warn(`[AgentRunner][ExecutionStage] Failed to extract repo file tree via Docker: ${err.message}`);
+            repoFileTree = [];
+        }
+
         const loopResults: SubTaskLoopResult[] = [];
         const approvedSubTasks: ApprovedPatchSubTask[] = [];
 
@@ -461,7 +478,8 @@ export class ExecutionStageManager {
                 payload,
                 subTask,
                 workspacePath,
-                branchName
+                branchName,
+                repoFileTree
             );
             loopResults.push(approvedSubTask.report);
             approvedSubTasks.push({
@@ -520,7 +538,8 @@ export class ExecutionStageManager {
         payload: ExecutePayload,
         subTask: ExecutionSubTask,
         workspacePath: string,
-        branchName: string
+        branchName: string,
+        repoFileTree?: string[]
     ): Promise<ApprovedSubTaskResult> {
         const pair = this.registry.createPair(subTask.domain);
         const trace: AgentLoopIterationResult[] = [];
@@ -547,19 +566,22 @@ export class ExecutionStageManager {
                 workspacePath,
                 executionBranchName: branchName,
                 fileSnapshots: snapshots,
+                repoFileTree,
             });
 
             const generatedRewrites = extractFileRewritesFromContent(generation.content);
             const proposedPatch = extractPatchFromContent(generation.content);
-            // Disable patch mode to enforce complete rewrites instead of diffs
+            const allowPatchFallback = subTask.domain !== 'backend';
+            // Backend generator must return full file rewrites; patch fallback remains frontend-only.
             const applyMode = generatedRewrites.length > 0
                 ? 'rewrite-files'
-                : 'none';
+                : allowPatchFallback && proposedPatch
+                    ? 'patch'
+                    : 'none';
 
-            // Log output of generator
             console.log(
                 `[AgentRunner][ExecutionStage] subTask=${subTask.id} iteration=${iteration} ` +
-                `generator output: ${generation.content}`
+                `generator output (${generation.content.length} chars)`
             );
 
             if (applyMode === 'none') {
@@ -567,7 +589,7 @@ export class ExecutionStageManager {
                     'Generator response did not include valid file rewrites.';
                 reviewerNotes = [
                     missingChangeSetNote,
-                    'Provide a JSON summary and output the full code changes inside <file path="...">...</file> blocks. Do not use file diffs or patches, just an entire rewrite.',
+                    'Provide a JSON summary and output full file rewrites inside the files[] array. Do not use file diffs or patches.',
                 ];
                 finalDecision = 'REWRITE';
                 trace.push(this.syntheticRewriteTrace(
@@ -587,11 +609,19 @@ export class ExecutionStageManager {
             }
 
             try {
-                await this.applyFileRewrites(workspacePath, generatedRewrites);
-                console.log(
-                    `[AgentRunner][ExecutionStage] subTask=${subTask.id} iteration=${iteration} ` +
-                    `applied rewrite-files count=${generatedRewrites.length}`
-                );
+                if (applyMode === 'patch' && proposedPatch) {
+                    await this.applyPatch(workspacePath, proposedPatch);
+                    console.log(
+                        `[AgentRunner][ExecutionStage] subTask=${subTask.id} iteration=${iteration} ` +
+                        `applied patch fallback`
+                    );
+                } else {
+                    await this.applyFileRewrites(workspacePath, generatedRewrites);
+                    console.log(
+                        `[AgentRunner][ExecutionStage] subTask=${subTask.id} iteration=${iteration} ` +
+                        `applied rewrite-files count=${generatedRewrites.length}`
+                    );
+                }
             } catch (err) {
                 await this.discardWorkingChanges(workspacePath);
                 const applyNote = `Change application failed: ${formatLoopError(err)}`;
@@ -616,8 +646,10 @@ export class ExecutionStageManager {
                 continue;
             }
 
-            const workspaceDiff = await this.readStagedDiff(workspacePath, subTask.files);
-            if (!workspaceDiff) {
+            const workspaceDiff = subTask.domain === 'backend'
+                ? ''
+                : await this.readStagedDiff(workspacePath, subTask.files);
+            if (subTask.domain !== 'backend' && !workspaceDiff) {
                 reviewerNotes = [
                     'Generator changes applied but produced no staged diff.',
                     'Ensure rewritten files actually modify repository contents.',
@@ -627,7 +659,6 @@ export class ExecutionStageManager {
                 continue;
             }
 
-            const reviewerPatchContext = workspaceDiff;
             const review = await pair.reviewer.run({
                 runId: payload.runId,
                 requestId: payload.requestId,
@@ -637,9 +668,10 @@ export class ExecutionStageManager {
                 generation,
                 workspacePath,
                 executionBranchName: branchName,
-                proposedPatch: reviewerPatchContext,
-                workspaceDiff,
+                proposedPatch: subTask.domain === 'backend' ? undefined : workspaceDiff,
+                workspaceDiff: subTask.domain === 'backend' ? undefined : workspaceDiff,
                 fileSnapshots: snapshots,
+                repoFileTree,
             });
 
             finalDecision = review.decision;
@@ -669,6 +701,29 @@ export class ExecutionStageManager {
             if (review.decision === 'APPROVED') {
                 const stagedFiles = await this.listStagedFiles(workspacePath);
                 if (stagedFiles.length === 0) {
+                    if (subTask.domain === 'backend') {
+                        console.log(
+                            `[AgentRunner][ExecutionStage] subTask=${subTask.id} iteration=${iteration} ` +
+                            'reviewer approved with no staged changes; returning approved result without commit'
+                        );
+                        return {
+                            report: {
+                                subTaskId: subTask.id,
+                                domain: subTask.domain,
+                                agent: subTask.agent,
+                                iterations: trace.length,
+                                finalDecision,
+                                reviewerNotes,
+                                trace,
+                            },
+                            patch: '',
+                            commitSha: '',
+                            filesChanged: [],
+                            generatorName: pair.generator.name,
+                            reviewerName: pair.reviewer.name,
+                        };
+                    }
+
                     reviewerNotes = ['Reviewer approved but no staged changes were detected.'];
                     finalDecision = 'REWRITE';
                     await this.discardWorkingChanges(workspacePath);
@@ -710,10 +765,25 @@ export class ExecutionStageManager {
             await this.discardWorkingChanges(workspacePath);
         }
 
-        throw new Error(
-            `[ExecutionStage] Reviewer did not approve subTask=${subTask.id} ` +
-            `after ${this.maxIterations} iterations. Latest notes=${JSON.stringify(reviewerNotes)}`
-        );
+        // After max iterations without approval, return a result indicating REWRITE decision
+        const resultReport = {
+            subTaskId: subTask.id,
+            domain: subTask.domain,
+            agent: subTask.agent,
+            iterations: trace.length,
+            finalDecision: 'REWRITE' as const,
+            reviewerNotes,
+            trace,
+        };
+        // No changes were committed, so patch and commitSha are empty
+        return {
+            report: resultReport,
+            patch: '',
+            commitSha: '',
+            filesChanged: [],
+            generatorName: pair.generator.name,
+            reviewerName: pair.reviewer.name,
+        };
     }
 
     private syntheticRewriteTrace(

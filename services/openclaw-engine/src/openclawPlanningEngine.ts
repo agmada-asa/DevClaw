@@ -102,6 +102,7 @@ class DefaultOpenClawPlanningEngine implements OpenClawPlanningEngine {
             repo: input.repo,
             description: input.description,
             issueNumber: input.issueNumber,
+            repoFileTree: input.repoFileTree,
         });
         const plan: ArchitecturePlan = {
             planId: `plan-${input.requestId.slice(0, 8)}`,

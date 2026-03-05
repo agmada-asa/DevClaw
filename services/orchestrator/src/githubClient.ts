@@ -97,3 +97,25 @@ export async function createOrDedupeIssue(
     const created = await createIssue(token, owner, repo, title, body);
     return { ...created, isDuplicate: false };
 }
+
+/**
+ * Fetch the repository file tree.
+ */
+export async function fetchRepoTree(token: string, owner: string, repo: string): Promise<string[]> {
+    try {
+        const repoParams = {
+            headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github.v3+json' },
+            timeout: GITHUB_SEARCH_TIMEOUT_MS,
+        };
+        const repoRes = await axios.get(`${GITHUB_API}/repos/${owner}/${repo}`, repoParams);
+        const defaultBranch = repoRes.data.default_branch;
+
+        const treeRes = await axios.get(`${GITHUB_API}/repos/${owner}/${repo}/git/trees/${defaultBranch}?recursive=1`, repoParams);
+        return treeRes.data.tree
+            .filter((item: any) => item.type === 'blob')
+            .map((item: any) => item.path);
+    } catch (err: any) {
+        console.warn('[Orchestrator] Failed to fetch repo tree:', err?.message);
+        return [];
+    }
+}

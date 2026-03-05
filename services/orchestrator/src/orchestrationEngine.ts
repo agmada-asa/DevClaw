@@ -24,6 +24,7 @@ export interface PlanInput {
     intake: IntakeRequest;
     repoFullName: string;
     issueNumber: number;
+    repoFileTree?: string[];
 }
 
 export interface RefineInput {
@@ -133,6 +134,7 @@ class OpenClawPlanningEngine {
             description: input.intake.message,
             issueNumber: input.issueNumber,
             source: 'orchestrator',
+            repoFileTree: input.repoFileTree,
         }, {
             timeout: ORCHESTRATOR_PLAN_TIMEOUT_MS,
         });

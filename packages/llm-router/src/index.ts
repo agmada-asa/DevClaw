@@ -96,6 +96,21 @@ async function callProvider(
       throw new ProviderTimeoutError(ctx);
     }
 
+    // Sometimes Axios stream reading phase throws a raw Error instead of AxiosError 
+    // when the underlying socket is abruptly closed or aborted.
+    if (err instanceof Error) {
+      const msg = err.message.toLowerCase();
+      // "aborted", "socket hang up", "econnreset" etc.
+      if (
+        msg === 'aborted' ||
+        msg === 'socket hang up' ||
+        msg.includes('econnreset') ||
+        (err as any).code === 'ECONNRESET'
+      ) {
+        throw new ProviderTimeoutError(ctx);
+      }
+    }
+
     // Non-axios error (e.g. missing API key check from provider file).
     throw new RouterError(err instanceof Error ? err.message : String(err), ctx);
   }

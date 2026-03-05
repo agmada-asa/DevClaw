@@ -130,6 +130,10 @@ export class AgentLoopManager {
                 );
             }
 
+            // Conditional logging for reviewer decision
+            if (process.env.RUNNER_DEBUG) {
+                console.log(`[AgentLoop][Debug] iteration=${iteration} reviewer decision=${review.decision}`);
+            }
             finalDecision = review.decision;
             reviewerNotes = review.notes;
 

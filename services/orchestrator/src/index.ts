@@ -1,11 +1,12 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
 import { createClient } from '@supabase/supabase-js';
 import axios from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import { IntakeRequest } from '@devclaw/contracts';
-import { createOrDedupeIssue } from './githubClient';
+import { createOrDedupeIssue, fetchRepoTree } from './githubClient';
 import { getOrchestrationEngine } from './orchestrationEngine';
 import {
     buildExecutionSubTasks,
@@ -14,7 +15,7 @@ import {
     resolvePreferredExecutionBranch,
 } from './executionPreparation';
 
-dotenv.config();
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const app = express();
 const port = process.env.PORT || 3010;
@@ -169,12 +170,20 @@ app.post('/api/task', async (req: Request, res: Response): Promise<any> => {
 
     // ── Step 3: Asynchronous background processing ───────────────────────────
     (async () => {
+        let repoFileTree: string[] | undefined;
+        try {
+            repoFileTree = await fetchRepoTree(githubToken, owner, repoName);
+        } catch (e: any) {
+            console.warn('[Orchestrator] Failed to fetch repo tree for planner context', e.message);
+        }
+
         let plan: import('@devclaw/contracts').ArchitecturePlan | undefined;
         try {
             plan = await orchestrationEngine.plan({
                 intake,
                 repoFullName,
                 issueNumber,
+                repoFileTree,
             });
             console.log(`[Orchestrator] Fetched Architecture Plan ${plan?.planId}`);
         } catch (err: any) {

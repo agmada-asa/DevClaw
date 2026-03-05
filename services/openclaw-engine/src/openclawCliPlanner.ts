@@ -21,6 +21,7 @@ export interface OpenClawCreatePromptInput {
     repo: string;
     description: string;
     issueNumber?: number;
+    repoFileTree?: string[];
 }
 
 export interface OpenClawRevisionPromptInput {
@@ -200,6 +201,9 @@ const buildCreatePrompt = (input: OpenClawCreatePromptInput): string => {
         `repo: ${input.repo}`,
         `issueNumber: ${input.issueNumber ?? 'n/a'}`,
         `task: ${input.description}`,
+        ...(input.repoFileTree && input.repoFileTree.length > 0
+            ? ['repository file tree:', ...input.repoFileTree.slice(0, 500).map(f => `- ${f}`)]
+            : [])
     ].join('\n');
 };
 
