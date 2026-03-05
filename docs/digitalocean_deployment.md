@@ -1,0 +1,80 @@
+# DevClaw DigitalOcean Deployment Guide
+
+This document outlines the end-to-end process for deploying DevClaw to a DigitalOcean Droplet, moving away from Cloudflare Tunnels, and configuring the necessary environments.
+
+## 1. Initial Droplet Configuration & Prerequisites
+
+Before deploying, ensure your DigitalOcean Droplet has the base requirements. The current deployment targets:
+- **Droplet IP:** `104.248.173.95`
+- **User:** `root`
+- **Directory:** `/var/www/devclaw`
+
+**Prerequisites on the Droplet:**
+- Node.js and npm must be installed on the Droplet.
+- SSH access from your deploy machine to the Droplet requires your SSH keys to be authorized (e.g., added to `~/.ssh/authorized_keys` on the Droplet).
+
+*Note: The automatic deployment script handles installing `pm2` and `turbo` globally on the server if they are not already present.*
+
+## 2. Environment Configurations
+
+To correctly shift away from Cloudflare tunneling, establish direct communication using the Droplet IP.
+
+### Bot Applications (Client-Side)
+If you are running the Telegram and WhatsApp bots locally or on a separate machine, they need to target the new Droplet IP.
+Update **`apps/telegram-bot/.env`** and **`apps/whatsapp-bot/.env`**:
+```env
+# Change this from the trycloudflare.com URL to point to the Gateway on the Droplet
+GATEWAY_URL=http://104.248.173.95:3001/api/ingress/message
+```
+
+### Droplet Services (Backend-Side)
+On the Droplet, update **`services/openclaw-gateway/.env`** to point back to where your bots live, and connect to the local orchestrator:
+
+```env
+# Connect to the local PM2 Orchestrator
+ORCHESTRATOR_URL=http://localhost:3010
+
+# Note: Update these to point to wherever your bots are actually running!
+# If your bots are also hosted on the Droplet, use localhost:3002 and localhost:3003
+TELEGRAM_BOT_URL=http://<BOT_HOST_IP>:3002
+WHATSAPP_BOT_URL=http://<BOT_HOST_IP>:3003
+```
+*(Other internal routing URLs like `OPENCLAW_ENGINE_URL` can remain as `http://localhost:<port>` since `pm2` runs all backend services cooperatively on the same Droplet).*
+
+### GitHub OAuth App Settings
+Because the Gateway URL has fundamentally changed, GitHub must be updated with the new callback location.
+Go to **GitHub Developer Settings -> OAuth Apps -> Your App**:
+- **Homepage URL**: `http://104.248.173.95:3001`
+- **Authorization callback URL**: `http://104.248.173.95:3001/api/auth/github/callback`
+
+## 3. Deploying New Builds
+
+Whenever you have new changes locally that you want to deploy to your Droplet, use the included deployment script (`deploy.sh`).
+
+### How the Deployment Script Works
+The `deploy.sh` script automates the full CI/CD loop from your local machine:
+1. **Prepare:** Ensures the target directory (`/var/www/devclaw`) exists via SSH.
+2. **Transfer:** Uses `rsync` to sync your local files to the Droplet, automatically excluding `node_modules`, `.git`, and build caches to drastically save bandwidth.
+3. **Build & Run:** SSHs into the Droplet to fresh install dependencies via `npm install`, compile the services using `npm run build:servers`, and gracefully restarts all nodes utilizing `pm2 startOrReload ecosystem.config.js --update-env`.
+
+### Deployment Steps
+From the root of your project directory, simply run:
+
+```bash
+chmod +x deploy.sh
+./deploy.sh
+```
+
+### Post-Deployment Monitoring
+To verify that everything successfully deployed and is running without exceptions, you can remote into your server and inspect PM2:
+
+```bash
+# SSH into the server
+ssh root@104.248.173.95
+
+# List all running PM2 services (Orchestrator, Gateway, Engine, Agent Runner)
+pm2 status
+
+# Tail the combined logs for all services
+pm2 logs
+```
