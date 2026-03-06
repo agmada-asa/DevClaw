@@ -50,6 +50,7 @@ const buildRoutingPrompt = (
         'marketing.plan_campaign    — Plan a targeted outreach email/LinkedIn campaign',
         'sales.find_prospects       — Search LinkedIn for qualified startup/dev shop leads',
         'sales.send_outreach        — Send pending connection requests to qualified prospects',
+        'sales.follow_up            — Check which connection requests were accepted and send follow-up messages',
         'operations.analyze_metrics — Analyze current traffic/signup/MRR metrics for bottlenecks',
         'operations.process_feedback — Review user feedback and draft product responses',
         'operations.plan_iteration  — Decide the next product iteration based on current data',
@@ -75,6 +76,7 @@ const VALID_TASK_TYPES = new Set<string>([
     'marketing.plan_campaign',
     'sales.find_prospects',
     'sales.send_outreach',
+    'sales.follow_up',
     'operations.analyze_metrics',
     'operations.process_feedback',
     'operations.plan_iteration',
@@ -87,6 +89,7 @@ const DOMAIN_MAP: Record<string, TaskDomain> = {
     'marketing.plan_campaign': 'marketing',
     'sales.find_prospects': 'sales',
     'sales.send_outreach': 'sales',
+    'sales.follow_up': 'sales',
     'operations.analyze_metrics': 'operations',
     'operations.process_feedback': 'operations',
     'operations.plan_iteration': 'operations',
@@ -122,7 +125,7 @@ const parseRoutedTask = (raw: string): RoutedTask => {
 
 // ─── Direct Z.AI GLM routing (no CLI dependency) ─────────────────────────────
 //
-// When CEOCLAW_AGENT_ENGINE=direct, call glm-z1-flash (the orchestrator role)
+// When CEOCLAW_AGENT_ENGINE=direct, call z-ai/glm-4.7 (the orchestrator role)
 // directly via the llm-router instead of invoking the openclaw CLI binary.
 // This mode makes CEOClaw fully self-contained for demos and production.
 
@@ -160,6 +163,7 @@ const heuristicRoute = (state: BusinessState, recentTasks: string[]): RoutedTask
         'sales.find_prospects',
         'marketing.write_seo_content',
         'sales.send_outreach',
+        'sales.follow_up',
         'operations.analyze_metrics',
         'product.generate_idea',
     ];
@@ -175,9 +179,9 @@ export const routeNextTask = async (
 ): Promise<RoutedTask> => {
     const engine = (process.env.CEOCLAW_AGENT_ENGINE || 'direct').toLowerCase();
 
-    // direct — call Z.AI GLM (glm-z1-flash via orchestrator role) without CLI
+    // direct — call Z.AI GLM (z-ai/glm-4.7 via orchestrator role) without CLI
     if (engine === 'direct') {
-        console.log('[TaskRouter] Using direct Z.AI GLM routing (glm-z1-flash)...');
+        console.log('[TaskRouter] Using direct Z.AI GLM routing (z-ai/glm-4.7 via OpenRouter)...');
         try {
             const task = await directRoute(state, recentTaskTypes);
             console.log(`[TaskRouter] GLM routed to: ${task.taskType} (${task.priority}) — ${task.reason}`);

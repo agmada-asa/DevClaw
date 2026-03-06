@@ -1,17 +1,18 @@
 /**
  * productDomain.ts
  *
- * CEOClaw product domain — two tasks, both driven by OpenClaw CLI:
+ * CEOClaw product domain — two tasks driven by GLM via llm-router:
  *
  *   1. generate_idea      — brainstorm the next high-leverage feature or
- *                           positioning tweak for DevClaw
+ *                           positioning tweak for DevClaw (orchestrator role)
  *   2. build_landing_page — generate a complete, deployable HTML landing page
- *                           for DevClaw including copy, CTA, and deployment hint
+ *                           for DevClaw including copy, CTA, and deployment hint (planner role)
  */
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { runOpenClawPrompt, extractJsonObject } from './openclawRunner';
+import { chat } from '@devclaw/llm-router';
+import { extractJsonObject } from './openclawRunner';
 import { BusinessState, ProductIdeaOutput, LandingPageOutput } from './founderTypes';
 
 // ─── Task 1: Idea Generation ──────────────────────────────────────────────────
@@ -50,10 +51,15 @@ const parseIdeaOutput = (raw: string): ProductIdeaOutput => {
 };
 
 export const generateIdea = async (state: BusinessState): Promise<ProductIdeaOutput> => {
-    console.log('[ProductDomain] Generating product idea via OpenClaw...');
+    console.log('[ProductDomain] Generating product idea via GLM...');
     const prompt = buildIdeaPrompt(state);
-    const raw = await runOpenClawPrompt(prompt, { timeoutMs: 90_000 });
-    const output = parseIdeaOutput(raw);
+    const response = await chat({
+        role: 'orchestrator',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+        requestId: `ceoclaw-idea-${Date.now()}`,
+    });
+    const output = parseIdeaOutput(response.content);
     console.log(`[ProductDomain] Idea: ${output.idea}`);
     return output;
 };
@@ -105,9 +111,15 @@ const LANDING_PAGE_DIR = path.resolve(
 );
 
 export const buildLandingPage = async (state: BusinessState): Promise<LandingPageOutput> => {
-    console.log('[ProductDomain] Building landing page via OpenClaw...');
+    console.log('[ProductDomain] Building landing page via GLM...');
     const prompt = buildLandingPagePrompt(state);
-    const raw = await runOpenClawPrompt(prompt, { timeoutMs: 3 * 60_000 });
+    const response = await chat({
+        role: 'planner',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.5,
+        requestId: `ceoclaw-lp-${Date.now()}`,
+    });
+    const raw = response.content;
     const output = parseLandingPageOutput(raw);
 
     if (output.html) {

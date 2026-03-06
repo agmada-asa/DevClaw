@@ -188,8 +188,6 @@ app.post('/api/campaign/:id/pause', async (req: Request, res: Response): Promise
 });
 
 app.get('/api/campaign/:id/prospects', async (req: Request, res: Response): Promise<any> => {
-    const campaign = await getCampaign(req.params.id);
-    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
     const prospects = await getProspectsByCampaign(req.params.id);
     const summary = {
         total: prospects.length,

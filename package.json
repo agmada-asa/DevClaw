@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev",
+    "dev": "turbo run dev --concurrency=15",
     "dev:servers": "turbo run dev --filter=openclaw-gateway --filter=orchestrator --filter=openclaw-engine --filter=agent-runner --filter=telegram-bot --filter=whatsapp-bot",
     "build:servers": "turbo run build --filter=openclaw-gateway --filter=orchestrator --filter=openclaw-engine --filter=agent-runner --filter=telegram-bot --filter=whatsapp-bot",
     "lint": "turbo run lint",

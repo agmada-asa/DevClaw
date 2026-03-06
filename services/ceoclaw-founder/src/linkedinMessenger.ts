@@ -292,6 +292,87 @@ const sendDirectMessage = async (
     }
 };
 
+// ─── Connection Acceptance Check ─────────────────────────────────────────────
+//
+// Navigates to LinkedIn's sent-invitations manager and scrapes the profile URLs
+// of requests that are STILL pending. The caller diffs this against the set of
+// prospects with status='connection_sent' to identify who has accepted.
+
+export const getPendingConnectionUrls = async (): Promise<string[]> => {
+    const email = process.env.LINKEDIN_EMAIL;
+    const password = process.env.LINKEDIN_PASSWORD;
+    const sessionPath = process.env.LINKEDIN_SESSION_PATH || DEFAULT_SESSION_PATH;
+    const headless = process.env.LINKEDIN_HEADLESS !== 'false';
+
+    if (!email || !password) {
+        throw new Error('LINKEDIN_EMAIL and LINKEDIN_PASSWORD must be set in environment.');
+    }
+
+    const browser: Browser = await chromium.launch({
+        headless,
+        executablePath: process.env.CHROMIUM_PATH || undefined,
+        args: ['--no-sandbox', '--disable-setuid-sandbox'],
+    });
+
+    const context: BrowserContext = await browser.newContext({
+        userAgent:
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+            '(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        viewport: { width: 1280, height: 800 },
+        locale: 'en-US',
+    });
+
+    const savedCookies = await loadSessionCookies(sessionPath);
+    if (savedCookies && savedCookies.length > 0) {
+        await context.addCookies(savedCookies as any);
+    }
+
+    const page: Page = await context.newPage();
+
+    try {
+        await page.goto(`${LINKEDIN_BASE}/feed`, { waitUntil: 'domcontentloaded', timeout: 20_000 });
+        const url = page.url();
+        if (url.includes('/login') || url.includes('/checkpoint')) {
+            throw new Error('LinkedIn session has expired. Delete linkedin-session.json and re-login.');
+        }
+
+        // Navigate to the sent invitations manager
+        await page.goto(
+            `${LINKEDIN_BASE}/mynetwork/invitation-manager/sent/`,
+            { waitUntil: 'domcontentloaded', timeout: 20_000 }
+        );
+        await sleep(jitter(2000));
+
+        // Scroll to load all pending requests
+        for (let i = 0; i < 3; i++) {
+            await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+            await sleep(jitter(1000));
+        }
+
+        // Extract profile URLs of still-pending sent invitations
+        const pendingUrls = await page.evaluate((base) => {
+            const cards = Array.from(document.querySelectorAll(
+                'li.invitation-card, [data-view-name="invitation-card"], .mn-invitation-item'
+            ));
+            const urls: string[] = [];
+            for (const card of cards) {
+                const link = card.querySelector('a[href*="/in/"]') as HTMLAnchorElement | null;
+                if (!link) continue;
+                const href = link.getAttribute('href') || '';
+                const clean = href.split('?')[0];
+                const full = clean.startsWith('http') ? clean : base + clean;
+                if (full.includes('/in/')) urls.push(full);
+            }
+            return urls;
+        }, LINKEDIN_BASE);
+
+        console.log(`[LinkedInMessenger] Found ${pendingUrls.length} still-pending connection requests.`);
+        return pendingUrls;
+    } finally {
+        await browser.close();
+    }
+};
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export interface OutreachTarget {
@@ -372,11 +453,23 @@ export const sendOutreachBatch = async (
 
             try {
                 if (is1st) {
+                    // Existing 1st-degree connection — direct message
                     sent = await sendDirectMessage(page, target.profileUrl, target.message);
                     method = 'direct_message';
                 } else {
-                    sent = await sendConnectionRequest(page, target.profileUrl, target.message, target.firstName);
-                    method = 'connection_request';
+                    // For 2nd/3rd-degree: try direct message first to catch "Open Profile" users
+                    // (LinkedIn allows anyone to message Open Profile members directly).
+                    // If the Message button is absent, fall back to a connection request with note.
+                    console.log(`[LinkedInMessenger] Trying direct message for non-1st-degree (open profile check): ${target.profileUrl}`);
+                    const directSent = await sendDirectMessage(page, target.profileUrl, target.message);
+                    if (directSent) {
+                        sent = true;
+                        method = 'direct_message';
+                        console.log(`[LinkedInMessenger] Open profile detected — sent direct message to ${target.profileUrl}`);
+                    } else {
+                        sent = await sendConnectionRequest(page, target.profileUrl, target.message, target.firstName);
+                        method = 'connection_request';
+                    }
                 }
 
                 results.push({ prospectId: target.prospectId, profileUrl: target.profileUrl, sent, method });

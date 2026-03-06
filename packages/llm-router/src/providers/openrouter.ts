@@ -23,18 +23,40 @@ export async function callOpenRouter(
         payload.max_tokens = maxTokens;
     }
 
-    const response = await axios.post(
-        `${BASE_URL}/chat/completions`,
-        payload,
-        {
-            headers: {
-                Authorization: `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
+    let response: any;
+    try {
+        response = await axios.post(
+            `${BASE_URL}/chat/completions`,
+            payload,
+            {
+                headers: {
+                    Authorization: `Bearer ${apiKey}`,
+                    'Content-Type': 'application/json',
+                },
+                responseType: 'stream',
+                ...(timeoutMs !== undefined && { timeout: timeoutMs }),
             },
-            responseType: 'stream',
-            ...(timeoutMs !== undefined && { timeout: timeoutMs }),
-        },
-    );
+        );
+    } catch (err: any) {
+        // For HTTP errors (4xx/5xx), axios with responseType:'stream' may still
+        // have the response body accessible. Try to read it for better diagnostics.
+        if (axios.isAxiosError(err) && err.response) {
+            let body: string | undefined;
+            try {
+                const chunks: Buffer[] = [];
+                for await (const chunk of err.response.data) {
+                    chunks.push(Buffer.from(chunk));
+                }
+                body = Buffer.concat(chunks).toString('utf-8');
+            } catch { /* couldn't read stream body */ }
+            // Re-throw with the body captured so ProviderHttpError shows it.
+            const augmented = Object.assign(err, {
+                response: { ...err.response, data: body ?? err.response.data },
+            });
+            throw augmented;
+        }
+        throw err;
+    }
 
     // Z.AI GLM models served via OpenRouter also use a two-phase streaming
     // format: reasoning_content (chain-of-thought) then content (final answer).

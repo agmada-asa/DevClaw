@@ -26,7 +26,8 @@ import { generateIdea, buildLandingPage } from './productDomain';
 import { writeSeoContent, planCampaign } from './marketingDomain';
 import { analyzeMetrics, processFeedback, planIteration } from './operationsDomain';
 import { createCampaign, discoverAndQualify, resumeCampaignSending } from './campaignManager';
-import { getProspectsByCampaign, listCampaigns } from './prospectStore';
+import { getProspectsByCampaign, getProspectsByStatus, listCampaigns, updateProspectStatus } from './prospectStore';
+import { getPendingConnectionUrls, sendOutreachBatch } from './linkedinMessenger';
 import {
     loadBusinessState,
     patchBusinessState,
@@ -111,6 +112,66 @@ const executeTask = async (task: RoutedTask, state: BusinessState): Promise<Task
                 messagesSent: result.messagesSent,
                 campaignId: resumable.campaignId,
             };
+        }
+
+        case 'sales.follow_up': {
+            // 1. Fetch all prospects we sent connection requests to but haven't messaged yet
+            const pendingProspects = await getProspectsByStatus('connection_sent');
+            if (pendingProspects.length === 0) {
+                console.log('[FounderLoop] No connection_sent prospects to follow up on.');
+                return { acceptedConnections: 0, followUpsSent: 0 };
+            }
+
+            // 2. Scrape LinkedIn's sent-invitations page to see which requests are STILL pending
+            let stillPendingUrls: string[];
+            try {
+                stillPendingUrls = await getPendingConnectionUrls();
+            } catch (err: any) {
+                console.warn(`[FounderLoop] Could not check pending connections: ${err.message}`);
+                return { acceptedConnections: 0, followUpsSent: 0 };
+            }
+
+            const stillPendingSet = new Set(
+                stillPendingUrls.map((u) => u.replace(/\/$/, '').toLowerCase())
+            );
+
+            // 3. Prospects NOT in the still-pending list have accepted the connection
+            const accepted = pendingProspects.filter((p) => {
+                const normalized = p.linkedinProfileUrl.replace(/\/$/, '').toLowerCase();
+                return !stillPendingSet.has(normalized);
+            });
+
+            console.log(`[FounderLoop] ${accepted.length} connection(s) accepted out of ${pendingProspects.length} pending.`);
+
+            if (accepted.length === 0) {
+                return { acceptedConnections: 0, followUpsSent: 0 };
+            }
+
+            // 4. Send follow-up direct messages to newly connected prospects
+            const followUpTargets = accepted.map((p) => ({
+                prospectId: p.prospectId,
+                profileUrl: p.linkedinProfileUrl,
+                // Re-use the stored outreach message as the follow-up, or generate a brief thanks
+                message: p.outreachMessage ||
+                    `Hi ${p.firstName}, thanks for connecting! I'd love to show you how DevClaw can save your team hours on PRs. Happy to chat — any time this week work?`,
+                firstName: p.firstName,
+                connectionDegree: '1st' as const,  // they are now 1st-degree
+            }));
+
+            const results = await sendOutreachBatch(followUpTargets);
+            const sent = results.filter((r) => r.sent).length;
+
+            // 5. Update status in Supabase
+            for (const result of results) {
+                if (result.sent) {
+                    await updateProspectStatus(result.prospectId, 'messaged', {
+                        messagedAt: new Date().toISOString(),
+                    });
+                }
+            }
+
+            console.log(`[FounderLoop] Follow-up: sent ${sent}/${accepted.length} messages to newly connected prospects.`);
+            return { acceptedConnections: accepted.length, followUpsSent: sent };
         }
 
         case 'operations.analyze_metrics':
