@@ -1,4 +1,5 @@
-// Background imported externally
+import CrabSVG from './CrabSVG';
+
 interface Props {
   onEnter: () => void;
   onAdmin: () => void;
@@ -138,6 +139,17 @@ export default function LandingPage({ onEnter, onAdmin }: Props) {
           }}
         />
 
+        {/* Crab */}
+        <div
+          className="absolute bottom-[-4%] left-1/2 -translate-x-1/2 w-[min(110vw,900px)] pointer-events-none animate-float"
+          style={{ opacity: 0.22 }}
+        >
+          <CrabSVG
+            className="w-full h-auto"
+            style={{ filter: 'drop-shadow(0 0 40px rgba(232,25,44,0.2))' }}
+          />
+        </div>
+
         {/* Secondary ambient glow */}
         <div
           className="absolute top-[-10%] left-[-5%] w-[500px] h-[400px] pointer-events-none"
@@ -211,7 +223,7 @@ export default function LandingPage({ onEnter, onAdmin }: Props) {
         </button>
 
         {/* Scroll indicator — bottom center */}
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-2 animate-bounce opacity-40">
+        <div className="absolute bottom-8 left-0 right-0 flex flex-col items-center gap-2 animate-bounce opacity-40">
           <span className="text-[10px] font-mono tracking-[0.2em] text-white/80">SCROLL</span>
           <svg className="w-3 h-3 text-white/80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
