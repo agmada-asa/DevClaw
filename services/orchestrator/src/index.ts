@@ -427,32 +427,46 @@ app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
                     `[Orchestrator] Received approved patch set for run ${updated.id}: ${patchSetRef}`
                 );
             }
-            if (execution.branchPush) {
-                const branchName = (execution.branchPush as any)?.branchName || 'n/a';
-                const pushed = (execution.branchPush as any)?.pushed;
+            const branchPush = execution.branchPush as { branchName?: unknown; pushed?: unknown } | undefined;
+            const pushed = typeof branchPush?.pushed === 'boolean' ? branchPush.pushed : undefined;
+            const pushedBranchName = typeof branchPush?.branchName === 'string'
+                ? branchPush.branchName.trim()
+                : '';
+            const branchName = pushedBranchName
+                || preparation?.executionBranchName
+                || preferredBranch.branchName
+                || 'n/a';
+
+            if (branchPush) {
                 console.log(
                     `[Orchestrator] Execution branch status for run ${updated.id}: ` +
                     `branch=${branchName} pushed=${String(pushed)}`
                 );
-                if (updated.chat_id) {
-                    const botUrl = resolveBotUrl(updated.channel);
-                    if (botUrl) {
-                        const branchUrl = `https://github.com/${updated.repo}/tree/${branchName}`;
-                        const completionMessage = [
-                            `✅ *Code is ready!*`,
-                            '',
-                            `Your task has been implemented for *${updated.repo}*.`,
-                            '',
-                            `🌿 *Branch:* \`${branchName}\``,
-                            `🔗 ${pushed ? branchUrl : '_Branch not pushed_'}`,
-                            '',
-                            `_Review the changes and merge when ready._`,
-                        ].join('\n');
-                        axios.post(`${botUrl}/api/send`, {
-                            chatId: updated.chat_id,
-                            message: completionMessage,
-                        }, { timeout: ORCHESTRATOR_BOT_SEND_TIMEOUT_MS }).catch(() => { });
-                    }
+            }
+
+            if (updated.chat_id) {
+                const botUrl = resolveBotUrl(updated.channel);
+                if (botUrl) {
+                    const repoUrl = `https://github.com/${updated.repo}`;
+                    const branchUrl = branchName !== 'n/a'
+                        ? `${repoUrl}/tree/${branchName}`
+                        : undefined;
+                    const completionMessage = [
+                        `✅ *Code is ready!*`,
+                        '',
+                        `Your task has been implemented for *${updated.repo}*.`,
+                        '',
+                        `📦 *Repository:* ${repoUrl}`,
+                        `🌿 *Branch:* \`${branchName}\``,
+                        `🔗 *Branch link:* ${branchUrl || '_Unavailable_'}`,
+                        ...(pushed === false ? ['_Note: branch push is disabled in this environment._'] : []),
+                        '',
+                        `_Review the changes and merge when ready._`,
+                    ].join('\n');
+                    axios.post(`${botUrl}/api/send`, {
+                        chatId: updated.chat_id,
+                        message: completionMessage,
+                    }, { timeout: ORCHESTRATOR_BOT_SEND_TIMEOUT_MS }).catch(() => { });
                 }
             }
             console.log(`[Orchestrator] Task ${updated.id} execution completed asynchronously.`);

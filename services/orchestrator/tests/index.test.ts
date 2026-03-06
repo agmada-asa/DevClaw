@@ -249,6 +249,53 @@ describe('Orchestrator API', () => {
         );
     });
 
+    it('POST /api/approve → sends completion message with repo and branch links', async () => {
+        const mockSupabase = createClient('', '');
+        ((mockSupabase as any).single as jest.Mock)
+            .mockResolvedValueOnce({
+                data: {
+                    id: 'runId',
+                    plan_id: 'plan-123',
+                    user_id: 'u1',
+                    repo: 'owner/repo',
+                    issue_number: 42,
+                    issue_url: 'https://github.com/owner/repo/issues/42',
+                    description: 'Fix login flow',
+                    plan_details: mockApprovedPlan,
+                    channel: 'telegram',
+                    chat_id: '123',
+                },
+                error: null,
+            })
+            .mockResolvedValueOnce({
+                data: {
+                    github_token: 'ghtoken',
+                },
+                error: null,
+            });
+
+        const res = await request(app).post('/api/approve').send({ planId: 'plan-123' });
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        const completionCall = mockedAxiosPost.mock.calls.find(([url, body]) =>
+            typeof url === 'string' &&
+            url.includes('/api/send') &&
+            typeof (body as any)?.message === 'string' &&
+            (body as any).message.includes('✅ *Code is ready!*') &&
+            (body as any).message.includes('📦 *Repository:* https://github.com/owner/repo')
+        );
+
+        expect(completionCall).toBeDefined();
+        const completionMessage = (completionCall?.[1] as any).message as string;
+        expect(completionMessage).toContain('🌿 *Branch:* `devclaw/fix-plan-123-login-flow`');
+        expect(completionMessage).toContain(
+            '🔗 *Branch link:* https://github.com/owner/repo/tree/devclaw/fix-plan-123-login-flow'
+        );
+    });
+
     // ── POST /api/reject ────────────────────────────────────────────────────
 
     it('POST /api/reject → 400 when missing runId and planId', async () => {
