@@ -61,6 +61,19 @@ let lastIterationAt: string | undefined;
 let lastTaskType: string | undefined;
 let lastTaskStatus: string | undefined;
 
+const TASK_DOMAIN_BY_TYPE: Record<TaskType, RoutedTask['domain']> = {
+    'product.generate_idea': 'product',
+    'product.build_landing_page': 'product',
+    'marketing.write_seo_content': 'marketing',
+    'marketing.plan_campaign': 'marketing',
+    'sales.find_prospects': 'sales',
+    'sales.send_outreach': 'sales',
+    'sales.follow_up': 'sales',
+    'operations.analyze_metrics': 'operations',
+    'operations.process_feedback': 'operations',
+    'operations.plan_iteration': 'operations',
+};
+
 // ─── Task Executor ────────────────────────────────────────────────────────────
 
 const executeTask = async (task: RoutedTask, state: BusinessState): Promise<TaskOutput> => {
@@ -248,6 +261,10 @@ export const runOneIteration = async (): Promise<TaskRecord> => {
     // Route: ask OpenClaw what to do next
     const routed = await routeNextTask(state, recentTasks);
 
+    return runRoutedTask(routed, state);
+};
+
+const runRoutedTask = async (routed: RoutedTask, state: BusinessState): Promise<TaskRecord> => {
     const taskId = uuidv4();
     const startedAt = new Date().toISOString();
     const record: TaskRecord = {
@@ -293,6 +310,34 @@ export const runOneIteration = async (): Promise<TaskRecord> => {
         console.error(`[FounderLoop] ❌ ${routed.taskType} failed: ${err.message}`);
         return { ...record, status: 'failed', error: err.message, completedAt };
     }
+};
+
+export interface RunTaskByTypeOptions {
+    stateOverrides?: Partial<Omit<BusinessState, 'updatedAt'>>;
+    reason?: string;
+    priority?: RoutedTask['priority'];
+}
+
+export const runTaskByType = async (
+    taskType: TaskType,
+    options: RunTaskByTypeOptions = {}
+): Promise<TaskRecord> => {
+    const baseState = await loadBusinessState();
+    const state: BusinessState = {
+        ...baseState,
+        ...(options.stateOverrides || {}),
+        updatedAt: baseState.updatedAt,
+    };
+
+    const routed: RoutedTask = {
+        taskType,
+        domain: TASK_DOMAIN_BY_TYPE[taskType],
+        reason: options.reason || 'Manual task execution (dev/test endpoint)',
+        priority: options.priority || 'medium',
+    };
+
+    console.log(`[FounderLoop] Manual task run: ${taskType}`);
+    return runRoutedTask(routed, state);
 };
 
 // ─── Loop Scheduler ───────────────────────────────────────────────────────────

@@ -392,8 +392,13 @@ export interface OutreachResult {
     error?: string;
 }
 
+export interface SendOutreachBatchOptions {
+    maxDurationMs?: number;
+}
+
 export const sendOutreachBatch = async (
-    targets: OutreachTarget[]
+    targets: OutreachTarget[],
+    options: SendOutreachBatchOptions = {}
 ): Promise<OutreachResult[]> => {
     const email = process.env.LINKEDIN_EMAIL;
     const password = process.env.LINKEDIN_PASSWORD;
@@ -441,12 +446,21 @@ export const sendOutreachBatch = async (
         }
 
         const batchToProcess = targets.slice(0, dailyLimit);
+        const startedAtMs = Date.now();
         console.log(
             `[LinkedInMessenger] Processing ${batchToProcess.length} outreach targets ` +
             `(daily limit: ${dailyLimit})`
         );
 
         for (const target of batchToProcess) {
+            if (options.maxDurationMs !== undefined && (Date.now() - startedAtMs) >= options.maxDurationMs) {
+                console.log(
+                    `[LinkedInMessenger] Sending timebox reached (${options.maxDurationMs}ms). ` +
+                    `Processed ${results.length}/${batchToProcess.length} targets.`
+                );
+                break;
+            }
+
             const is1st = target.connectionDegree === '1st';
             let sent = false;
             let method: OutreachResult['method'] = 'skipped';
@@ -483,7 +497,9 @@ export const sendOutreachBatch = async (
                 });
             }
 
-            await sleep(jitter(delayMs));
+            if (results.length < batchToProcess.length) {
+                await sleep(jitter(delayMs));
+            }
         }
 
         return results;

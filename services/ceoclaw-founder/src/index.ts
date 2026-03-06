@@ -4,17 +4,33 @@ import dotenv from 'dotenv';
 import path from 'path';
 
 // ─── Founder Loop (core agent) ────────────────────────────────────────────────
-import { startLoop, stopLoop, getLoopStatus, runOneIteration } from './founderLoop';
+import { startLoop, stopLoop, getLoopStatus, runOneIteration, runTaskByType } from './founderLoop';
 import { loadBusinessState, patchBusinessState, getTaskHistory } from './founderStore';
+import { TaskType, TaskPriority } from './founderTypes';
 
 // ─── Campaign API (sales domain) ─────────────────────────────────────────────
-import { createCampaign, runCampaign, resumeCampaignSending } from './campaignManager';
+import { createCampaign, runCampaign, resumeCampaignSending, getCampaignProgressPath } from './campaignManager';
 import { getCampaign, listCampaigns, getProspectsByCampaign, updateCampaignStatus } from './prospectStore';
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 const app = express();
 const port = process.env.PORT || 3050;
+
+const TASK_TYPES = new Set<TaskType>([
+    'product.generate_idea',
+    'product.build_landing_page',
+    'marketing.write_seo_content',
+    'marketing.plan_campaign',
+    'sales.find_prospects',
+    'sales.send_outreach',
+    'sales.follow_up',
+    'operations.analyze_metrics',
+    'operations.process_feedback',
+    'operations.plan_iteration',
+]);
+
+const TASK_PRIORITIES: TaskPriority[] = ['high', 'medium', 'low'];
 
 app.use(cors());
 app.use(express.json());
@@ -76,6 +92,43 @@ app.post('/api/loop/tick', async (_req: Request, res: Response): Promise<any> =>
         return res.status(200).json({
             success: true,
             message: `Executed: ${taskRecord.taskType} (${taskRecord.status})`,
+            task: taskRecord,
+        });
+    } catch (err: any) {
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+// POST /api/dev/task/run — deterministic, explicit task execution for dev/test
+app.post('/api/dev/task/run', async (req: Request, res: Response): Promise<any> => {
+    const { taskType, stateOverrides, reason, priority } = req.body || {};
+
+    if (typeof taskType !== 'string' || !TASK_TYPES.has(taskType as TaskType)) {
+        return res.status(400).json({
+            error: 'Invalid taskType',
+            validTaskTypes: Array.from(TASK_TYPES),
+        });
+    }
+
+    if (priority !== undefined && (typeof priority !== 'string' || !TASK_PRIORITIES.includes(priority as TaskPriority))) {
+        return res.status(400).json({
+            error: 'Invalid priority',
+            validPriorities: TASK_PRIORITIES,
+        });
+    }
+
+    try {
+        const taskRecord = await runTaskByType(taskType as TaskType, {
+            stateOverrides: typeof stateOverrides === 'object' && stateOverrides !== null
+                ? stateOverrides
+                : undefined,
+            reason: typeof reason === 'string' ? reason : undefined,
+            priority: typeof priority === 'string' ? (priority as TaskPriority) : undefined,
+        });
+
+        return res.status(200).json({
+            success: true,
+            message: `Executed explicit task: ${taskRecord.taskType} (${taskRecord.status})`,
             task: taskRecord,
         });
     } catch (err: any) {
@@ -159,12 +212,57 @@ app.get('/api/campaign/:id', async (req: Request, res: Response): Promise<any> =
 
 app.post('/api/campaign/:id/run', async (req: Request, res: Response): Promise<any> => {
     const campaignId = req.params.id;
+    const {
+        discoveryTimeboxMs,
+        qualificationTimeboxMs,
+        messageTimeboxMs,
+        sendingTimeboxMs,
+    } = req.body || {};
     const campaign = await getCampaign(campaignId);
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
     if (campaign.status === 'running') return res.status(409).json({ error: 'Campaign already running' });
 
-    res.status(202).json({ success: true, message: `Campaign "${campaign.name}" started.`, campaignId });
-    runCampaign(campaignId)
+    const parseOptionalPositiveInt = (value: unknown): number | undefined => {
+        if (value === undefined || value === null || value === '') return undefined;
+        const parsed = Number.parseInt(String(value), 10);
+        if (!Number.isFinite(parsed) || parsed <= 0) return undefined;
+        return parsed;
+    };
+
+    const parsedDiscoveryTimeboxMs = parseOptionalPositiveInt(discoveryTimeboxMs);
+    const parsedQualificationTimeboxMs = parseOptionalPositiveInt(qualificationTimeboxMs);
+    const parsedMessageTimeboxMs = parseOptionalPositiveInt(messageTimeboxMs);
+    const parsedSendingTimeboxMs = parseOptionalPositiveInt(sendingTimeboxMs);
+
+    if (discoveryTimeboxMs !== undefined && parsedDiscoveryTimeboxMs === undefined) {
+        return res.status(400).json({ error: 'Invalid discoveryTimeboxMs (must be positive integer milliseconds)' });
+    }
+    if (qualificationTimeboxMs !== undefined && parsedQualificationTimeboxMs === undefined) {
+        return res.status(400).json({ error: 'Invalid qualificationTimeboxMs (must be positive integer milliseconds)' });
+    }
+    if (messageTimeboxMs !== undefined && parsedMessageTimeboxMs === undefined) {
+        return res.status(400).json({ error: 'Invalid messageTimeboxMs (must be positive integer milliseconds)' });
+    }
+    if (sendingTimeboxMs !== undefined && parsedSendingTimeboxMs === undefined) {
+        return res.status(400).json({ error: 'Invalid sendingTimeboxMs (must be positive integer milliseconds)' });
+    }
+
+    const runOptions = {
+        ...(parsedDiscoveryTimeboxMs !== undefined && { discoveryTimeboxMs: parsedDiscoveryTimeboxMs }),
+        ...(parsedQualificationTimeboxMs !== undefined && { qualificationTimeboxMs: parsedQualificationTimeboxMs }),
+        ...(parsedMessageTimeboxMs !== undefined && { messageTimeboxMs: parsedMessageTimeboxMs }),
+        ...(parsedSendingTimeboxMs !== undefined && { sendingTimeboxMs: parsedSendingTimeboxMs }),
+    };
+
+    const progressFile = getCampaignProgressPath(campaignId);
+    res.status(202).json({
+        success: true,
+        message: `Campaign "${campaign.name}" started.`,
+        campaignId,
+        progressFile,
+        options: runOptions,
+    });
+    runCampaign(campaignId, runOptions)
         .then((r) => console.log(`[CEOClaw] Campaign ${campaignId}: sent=${r.messagesSent}`))
         .catch((err) => console.error(`[CEOClaw] Campaign ${campaignId} failed:`, err.message));
 });

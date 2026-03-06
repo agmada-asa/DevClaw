@@ -56,6 +56,17 @@ export interface LinkedInSearchConfig {
     query: string;
     maxResults: number;
     delayBetweenActionsMs: number;
+    maxDurationMs?: number;
+    onProgress?: (progress: LinkedInSearchProgress) => Promise<void> | void;
+}
+
+export interface LinkedInSearchProgress {
+    page: number;
+    maxPages: number;
+    found: number;
+    maxResults: number;
+    query: string;
+    timeboxReached?: boolean;
 }
 
 // Agent engine selection — mirrors RUNNER_ENGINE pattern in agent-runner

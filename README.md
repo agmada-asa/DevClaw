@@ -171,6 +171,7 @@ GET  /api/loop/status               Loop running state, MRR progress, last task
 POST /api/loop/start                Start the autonomous loop
 POST /api/loop/stop                 Stop the loop
 POST /api/loop/tick                 Manually trigger one iteration (demos)
+POST /api/dev/task/run              Run a specific task type directly (deterministic dev/test)
 GET  /api/loop/history?limit=50     Full task execution log
 
 GET  /api/state                     Current business state (MRR, signups, phase)
@@ -184,6 +185,14 @@ POST /api/campaign/:id/resume       Resume sending on a paused campaign
 POST /api/campaign/:id/pause        Pause a running campaign
 GET  /api/campaign/:id/prospects    List prospects and status counts for a campaign
 ```
+
+`POST /api/campaign/:id/run` accepts optional JSON body controls:
+- `discoveryTimeboxMs` — stop discovery after this many milliseconds and move to qualification
+- `qualificationTimeboxMs` — stop qualification after this many milliseconds and move to message generation
+
+During campaign execution, CEOClaw continuously writes progress JSON to:
+- `${CEOCLAW_PROGRESS_OUTPUT_DIR}/campaign-<campaign_id>.json`
+- default: `./ceoclaw-output/campaign-progress/campaign-<campaign_id>.json`
 
 ### Z.AI GLM env vars (required for all AI features)
 
@@ -212,6 +221,11 @@ GET  /api/campaign/:id/prospects    List prospects and status counts for a campa
 | `CEOCLAW_MAX_PROSPECTS_PER_CAMPAIGN` | `20` | Max prospects to discover per campaign |
 | `CEOCLAW_MIN_FIT_SCORE` | `65` | Minimum AI fit score (0–100) to qualify a prospect |
 | `CEOCLAW_DEFAULT_SEARCH_QUERY` | `CTO startup software` | LinkedIn search query |
+| `CEOCLAW_QUALIFY_TIMEOUT_MS` | `90000` | Per-prospect timeout for AI qualification |
+| `CEOCLAW_MESSAGE_TIMEOUT_MS` | `90000` | Per-prospect timeout for outreach message generation |
+| `CEOCLAW_DISCOVERY_TIMEBOX_MS` | — | Optional default discovery stage timebox (ms) |
+| `CEOCLAW_QUALIFICATION_TIMEBOX_MS` | — | Optional default qualification stage timebox (ms) |
+| `CEOCLAW_PROGRESS_OUTPUT_DIR` | `./ceoclaw-output/campaign-progress` | Where live campaign progress JSON is written |
 | `LINKEDIN_EMAIL` | — | LinkedIn account email |
 | `LINKEDIN_PASSWORD` | — | LinkedIn account password |
 | `LINKEDIN_SESSION_PATH` | `./linkedin-session.json` | Saved browser session path |
@@ -227,6 +241,11 @@ npm run dev
 
 # Trigger one iteration manually
 curl -X POST http://localhost:3050/api/loop/tick
+
+# Run one specific task directly (deterministic dev/test)
+curl -X POST http://localhost:3050/api/dev/task/run \
+  -H "Content-Type: application/json" \
+  -d '{"taskType":"operations.analyze_metrics","priority":"high"}'
 
 # Check status
 curl http://localhost:3050/api/loop/status
@@ -276,17 +295,18 @@ create table if not exists ceoclaw_task_log (
 create table if not exists ceoclaw_campaigns (
   campaign_id text primary key,
   name text not null,
-  status text default 'pending',
-  search_query text,
-  target_industries text[],
-  target_company_sizes text[],
-  target_titles text[],
-  max_prospects integer default 20,
-  min_fit_score integer default 65,
-  prospects_discovered integer default 0,
+  search_query text not null,
+  target_industries jsonb default '[]',
+  target_company_sizes jsonb default '[]',
+  target_titles jsonb default '[]',
+  max_prospects integer default 50,
+  min_fit_score integer default 60,
+  status text default 'draft',
+  prospects_found integer default 0,
   prospects_qualified integer default 0,
   messages_generated integer default 0,
   messages_sent integer default 0,
+  replies integer default 0,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -294,23 +314,24 @@ create table if not exists ceoclaw_campaigns (
 create table if not exists ceoclaw_prospects (
   prospect_id text primary key,
   campaign_id text references ceoclaw_campaigns(campaign_id),
-  first_name text,
-  last_name text,
-  title text,
-  company_name text,
-  industry text,
+  linkedin_profile_url text not null,
+  linkedin_company_url text,
+  first_name text not null,
+  last_name text not null,
+  title text not null,
+  company_name text not null,
   company_size text,
+  industry text,
   location text,
-  linkedin_url text,
-  status text default 'discovered',
   fit_score integer,
   fit_reason text,
-  decision_reason text,
-  generated_message text,
-  message_subject text,
-  discovered_at timestamptz default now(),
-  qualified_at timestamptz,
-  messaged_at timestamptz
+  outreach_message text,
+  status text default 'discovered',
+  connection_sent_at timestamptz,
+  messaged_at timestamptz,
+  replied_at timestamptz,
+  created_at timestamptz default now(),
+  updated_at timestamptz default now()
 );
 ```
 

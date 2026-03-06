@@ -1,7 +1,7 @@
 /**
  * marketingDomain.ts
  *
- * CEOClaw marketing domain — two tasks via OpenClaw CLI:
+ * CEOClaw marketing domain — two tasks via the shared AI runner:
  *
  *   1. write_seo_content — generate a full SEO blog post targeting devs/founders
  *                          who would benefit from DevClaw, saved to disk
@@ -141,7 +141,7 @@ const parseCampaignPlan = (raw: string): CampaignPlanOutput => {
 };
 
 export const planCampaign = async (state: BusinessState): Promise<CampaignPlanOutput> => {
-    console.log('[MarketingDomain] Planning outreach campaign via OpenClaw...');
+    console.log('[MarketingDomain] Planning outreach campaign via CEOClaw AI runner...');
     const prompt = buildCampaignPrompt(state);
     const raw = await runOpenClawPrompt(prompt, { timeoutMs: 90_000 });
     const output = parseCampaignPlan(raw);

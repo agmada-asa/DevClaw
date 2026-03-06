@@ -86,7 +86,7 @@ export const handleTextMessage = async (ctx: Context<any>) => {
 
         const chatId = ctx.chat?.id;
         const loginUrl = `${baseUrl}/api/auth/github?userId=${userId}&provider=telegram&chatId=${chatId}`;
-        return ctx.reply(`Please click this link to link your GitHub account: ${loginUrl}\n\nOnce complete, you can use /status to check your connection or /repo <owner>/<repo> to link a project.\n\nNote: If you are running locally, make sure the gateway is accessible or update GATEWAY_URL to a public tunnel.`);
+        return ctx.reply(`Please click this link to link your GitHub account: ${loginUrl}\n\nOnce complete, you can use /status to check your connection or /repo <owner>/<repo> to link a project.`);
     }
 
     const tLower = text.toLowerCase();

@@ -1,8 +1,12 @@
 /**
  * openclawRunner.ts
  *
- * Shared OpenClaw CLI runner — single source of truth for all OpenClaw
- * gateway/local agent invocations in ceoclaw-founder.
+ * Shared AI prompt runner for CEOClaw domain modules.
+ *
+ * Supports:
+ *   - direct llm-router mode (no OpenClaw CLI runtime dependency)
+ *   - OpenClaw CLI gateway mode
+ *   - OpenClaw CLI local mode
  *
  * Mirrors the pattern in services/openclaw-engine/src/openclawCliPlanner.ts
  * but extracted so every domain module (product, marketing, ops, sales) calls
@@ -11,6 +15,7 @@
 
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { chat } from '@devclaw/llm-router';
 
 const execFileAsync = promisify(execFile);
 
@@ -137,12 +142,14 @@ const runLocalAgentPrompt = async (prompt: string, timeoutMs: number): Promise<s
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 /**
- * Run a prompt through OpenClaw CLI and return the raw text response.
+ * Run a prompt through the configured CEOClaw engine and return raw text.
  * All domain modules (product, marketing, operations, sales) use this.
  *
- * Mode is controlled by OPENCLAW_CLI_MODE env var:
- *   'gateway'      (default) — calls openclaw gateway call agent
- *   'agent-local'            — calls openclaw agent --local
+ * Selection:
+ *   1) CEOCLAW_AGENT_ENGINE=direct        -> llm-router (no CLI)
+ *   2) OPENCLAW_CLI_MODE=direct|llm-router -> llm-router
+ *   3) OPENCLAW_CLI_MODE=agent-local      -> openclaw agent --local
+ *   4) default                            -> openclaw gateway call agent
  */
 export const runOpenClawPrompt = async (
     prompt: string,
@@ -150,7 +157,19 @@ export const runOpenClawPrompt = async (
 ): Promise<string> => {
     const timeoutMs = options?.timeoutMs
         ?? parseNumberEnv(process.env.OPENCLAW_CLI_TIMEOUT_MS, 2 * 60 * 1000);
+    const engine = (process.env.CEOCLAW_AGENT_ENGINE || 'direct').toLowerCase();
     const mode = (process.env.OPENCLAW_CLI_MODE || 'gateway').toLowerCase();
+
+    if (engine === 'direct' || mode === 'direct' || mode === 'llm-router') {
+        const response = await chat({
+            role: 'orchestrator',
+            messages: [{ role: 'user', content: prompt }],
+            temperature: 0.3,
+            requestId: `ceoclaw-direct-${Date.now()}`,
+        });
+        return response.content;
+    }
+
     return mode === 'agent-local'
         ? runLocalAgentPrompt(prompt, timeoutMs)
         : runGatewayAgentPrompt(prompt, timeoutMs);

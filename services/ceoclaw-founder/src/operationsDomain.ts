@@ -1,7 +1,7 @@
 /**
  * operationsDomain.ts
  *
- * CEOClaw operations domain — three tasks via OpenClaw CLI:
+ * CEOClaw operations domain — three tasks via the shared AI runner:
  *
  *   1. analyze_metrics    — read current business metrics, identify bottlenecks,
  *                           forecast MRR trajectory, recommend next actions
@@ -66,7 +66,7 @@ const parseMetricsAnalysis = (raw: string): MetricsAnalysisOutput => {
 };
 
 export const analyzeMetrics = async (state: BusinessState): Promise<MetricsAnalysisOutput> => {
-    console.log('[OperationsDomain] Analyzing metrics via OpenClaw...');
+    console.log('[OperationsDomain] Analyzing metrics via CEOClaw AI runner...');
     const prompt = buildMetricsPrompt(state);
     const raw = await runOpenClawPrompt(prompt, { timeoutMs: 60_000 });
     const output = parseMetricsAnalysis(raw);
@@ -78,7 +78,7 @@ export const analyzeMetrics = async (state: BusinessState): Promise<MetricsAnaly
 // ─── Task 2: Feedback Processing ─────────────────────────────────────────────
 
 // In production this would pull from a feedback table in Supabase.
-// For now we pass the current state and ask OpenClaw to synthesize
+// For now we pass the current state and ask the AI runner to synthesize
 // hypothetical feedback patterns based on the business phase.
 const buildFeedbackPrompt = (state: BusinessState, feedback?: string): string => [
     'You are CEOClaw processing user feedback for DevClaw.',
@@ -114,7 +114,7 @@ export const processFeedback = async (
     state: BusinessState,
     feedback?: string
 ): Promise<FeedbackResponseOutput> => {
-    console.log('[OperationsDomain] Processing feedback via OpenClaw...');
+    console.log('[OperationsDomain] Processing feedback via CEOClaw AI runner...');
     const prompt = buildFeedbackPrompt(state, feedback);
     const raw = await runOpenClawPrompt(prompt, { timeoutMs: 60_000 });
     const output = parseFeedbackResponse(raw);
@@ -158,7 +158,7 @@ const parseIterationPlan = (raw: string): IterationPlanOutput => {
 };
 
 export const planIteration = async (state: BusinessState): Promise<IterationPlanOutput> => {
-    console.log('[OperationsDomain] Planning next iteration via OpenClaw...');
+    console.log('[OperationsDomain] Planning next iteration via CEOClaw AI runner...');
     const prompt = buildIterationPrompt(state);
     const raw = await runOpenClawPrompt(prompt, { timeoutMs: 60_000 });
     const output = parseIterationPlan(raw);

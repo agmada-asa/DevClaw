@@ -53,23 +53,35 @@ jest.mock('../src/founderLoop', () => ({
         mrrProgress: '0%',
         phase: 'pre-launch',
     }),
+    runTaskByType: jest.fn().mockResolvedValue({
+        taskId: 'task-direct-1',
+        taskType: 'operations.analyze_metrics',
+        domain: 'operations',
+        status: 'completed',
+        reason: 'direct run',
+        priority: 'high',
+        mrrAtTime: 0,
+        startedAt: new Date().toISOString(),
+        completedAt: new Date().toISOString(),
+    }),
 }));
 
 jest.mock('../src/campaignManager', () => ({
     createCampaign: jest.fn().mockResolvedValue({
         campaignId: 'camp-1',
         name: 'Test Campaign',
-        status: 'pending',
+        status: 'draft',
     }),
     runCampaign: jest.fn().mockResolvedValue({ messagesSent: 0 }),
     resumeCampaignSending: jest.fn().mockResolvedValue({ messagesSent: 0 }),
+    getCampaignProgressPath: jest.fn().mockReturnValue('/tmp/campaign-progress.json'),
 }));
 
 jest.mock('../src/prospectStore', () => ({
     getCampaign: jest.fn().mockResolvedValue({
         campaignId: 'camp-1',
         name: 'Test Campaign',
-        status: 'pending',
+        status: 'draft',
     }),
     listCampaigns: jest.fn().mockResolvedValue([]),
     getProspectsByCampaign: jest.fn().mockResolvedValue([]),
@@ -77,9 +89,9 @@ jest.mock('../src/prospectStore', () => ({
 }));
 
 import app from '../src/index';
-import { runOneIteration, startLoop, stopLoop, getLoopStatus } from '../src/founderLoop';
+import { runOneIteration, startLoop, stopLoop, getLoopStatus, runTaskByType } from '../src/founderLoop';
 import { loadBusinessState, patchBusinessState, getTaskHistory } from '../src/founderStore';
-import { createCampaign } from '../src/campaignManager';
+import { createCampaign, runCampaign } from '../src/campaignManager';
 
 // ─── Health ───────────────────────────────────────────────────────────────────
 
@@ -136,6 +148,44 @@ describe('POST /api/loop/tick', () => {
         expect(res.body.task.taskType).toBe('operations.analyze_metrics');
         expect(res.body.task.status).toBe('completed');
         expect(runOneIteration).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('POST /api/dev/task/run', () => {
+    it('runs the explicit task type with optional overrides', async () => {
+        const res = await request(app).post('/api/dev/task/run').send({
+            taskType: 'operations.analyze_metrics',
+            reason: 'Manual validation',
+            priority: 'high',
+            stateOverrides: { mrr: 42, totalSignups: 10 },
+        });
+
+        expect(res.status).toBe(200);
+        expect(res.body.success).toBe(true);
+        expect(res.body.task.taskType).toBe('operations.analyze_metrics');
+        expect(runTaskByType).toHaveBeenCalledWith(
+            'operations.analyze_metrics',
+            expect.objectContaining({
+                reason: 'Manual validation',
+                priority: 'high',
+                stateOverrides: expect.objectContaining({ mrr: 42, totalSignups: 10 }),
+            })
+        );
+    });
+
+    it('returns 400 for invalid task type', async () => {
+        const res = await request(app).post('/api/dev/task/run').send({ taskType: 'sales.invalid' });
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe('Invalid taskType');
+    });
+
+    it('returns 400 for invalid priority', async () => {
+        const res = await request(app).post('/api/dev/task/run').send({
+            taskType: 'operations.analyze_metrics',
+            priority: 'urgent',
+        });
+        expect(res.status).toBe(400);
+        expect(res.body.error).toBe('Invalid priority');
     });
 });
 
@@ -213,5 +263,55 @@ describe('GET /api/campaign', () => {
         expect(res.status).toBe(200);
         expect(res.body.success).toBe(true);
         expect(Array.isArray(res.body.campaigns)).toBe(true);
+    });
+});
+
+describe('POST /api/campaign/:id/run', () => {
+    it('accepts optional stage timebox options', async () => {
+        const res = await request(app).post('/api/campaign/camp-1/run').send({
+            discoveryTimeboxMs: 60_000,
+            qualificationTimeboxMs: 45_000,
+            messageTimeboxMs: 30_000,
+            sendingTimeboxMs: 25_000,
+        });
+
+        expect(res.status).toBe(202);
+        expect(res.body.success).toBe(true);
+        expect(res.body.progressFile).toBe('/tmp/campaign-progress.json');
+        expect(runCampaign).toHaveBeenCalledWith(
+            'camp-1',
+            expect.objectContaining({
+                discoveryTimeboxMs: 60000,
+                qualificationTimeboxMs: 45000,
+                messageTimeboxMs: 30000,
+                sendingTimeboxMs: 25000,
+            })
+        );
+    });
+
+    it('rejects invalid timebox values', async () => {
+        const badDiscovery = await request(app).post('/api/campaign/camp-1/run').send({
+            discoveryTimeboxMs: 'abc',
+        });
+        expect(badDiscovery.status).toBe(400);
+        expect(badDiscovery.body.error).toContain('discoveryTimeboxMs');
+
+        const badQualification = await request(app).post('/api/campaign/camp-1/run').send({
+            qualificationTimeboxMs: -1,
+        });
+        expect(badQualification.status).toBe(400);
+        expect(badQualification.body.error).toContain('qualificationTimeboxMs');
+
+        const badMessage = await request(app).post('/api/campaign/camp-1/run').send({
+            messageTimeboxMs: '0',
+        });
+        expect(badMessage.status).toBe(400);
+        expect(badMessage.body.error).toContain('messageTimeboxMs');
+
+        const badSending = await request(app).post('/api/campaign/camp-1/run').send({
+            sendingTimeboxMs: 'abc',
+        });
+        expect(badSending.status).toBe(400);
+        expect(badSending.body.error).toContain('sendingTimeboxMs');
     });
 });

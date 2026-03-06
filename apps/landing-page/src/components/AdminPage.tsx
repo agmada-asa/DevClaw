@@ -6,13 +6,24 @@ const ADMIN_PASSWORD = 'devclaw2024';
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
 interface Campaign {
-  id: string;
+  campaignId: string;
   name: string;
-  status: 'pending' | 'running' | 'completed' | 'paused' | 'failed';
+  status: 'draft' | 'running' | 'completed' | 'paused';
   searchQuery: string;
   maxProspects: number;
   minFitScore: number;
   createdAt: string;
+}
+
+interface CampaignApiPayload {
+  campaignId?: string;
+  id?: string;
+  name?: string;
+  status?: Campaign['status'] | 'pending' | 'failed';
+  searchQuery?: string;
+  maxProspects?: number;
+  minFitScore?: number;
+  createdAt?: string;
 }
 
 interface ProspectSummary {
@@ -36,15 +47,32 @@ interface Props {
   onBack: () => void;
 }
 
+const normalizeCampaign = (payload: CampaignApiPayload): Campaign => {
+  const rawStatus = payload.status;
+  const status: Campaign['status'] =
+    rawStatus === 'running' || rawStatus === 'paused' || rawStatus === 'completed'
+      ? rawStatus
+      : 'draft';
+
+  return {
+    campaignId: payload.campaignId || payload.id || '',
+    name: payload.name || 'Untitled Campaign',
+    status,
+    searchQuery: payload.searchQuery || '',
+    maxProspects: typeof payload.maxProspects === 'number' ? payload.maxProspects : 0,
+    minFitScore: typeof payload.minFitScore === 'number' ? payload.minFitScore : 0,
+    createdAt: payload.createdAt || new Date(0).toISOString(),
+  };
+};
+
 // ─── Status badge ──────────────────────────────────────────────────────────────
 
 function StatusBadge({ status }: { status: Campaign['status'] }) {
   const styles: Record<Campaign['status'], string> = {
-    pending:   'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
+    draft:     'bg-yellow-500/10 text-yellow-400 border-yellow-500/20',
     running:   'bg-green-500/10  text-green-400  border-green-500/20',
     completed: 'bg-blue-500/10   text-blue-400   border-blue-500/20',
     paused:    'bg-gray-500/10   text-gray-400   border-gray-500/20',
-    failed:    'bg-red-500/10    text-red-400    border-red-500/20',
   };
   return (
     <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${styles[status]}`}>
@@ -96,12 +124,12 @@ function CampaignRow({
     if (summary) return;
     setLoading(true);
     try {
-      const r = await fetch(`${API_BASE}/api/campaign/${campaign.id}/prospects`);
+      const r = await fetch(`${API_BASE}/api/campaign/${campaign.campaignId}/prospects`);
       const d = await r.json();
       if (d.success) setSummary(d.summary);
     } catch { /* server may be offline */ }
     setLoading(false);
-  }, [campaign.id, summary]);
+  }, [campaign.campaignId, summary]);
 
   const toggle = () => {
     if (!expanded) loadProspects();
@@ -130,17 +158,17 @@ function CampaignRow({
 
         <div className="flex items-center gap-2">
           {campaign.status === 'running' && (
-            <button onClick={() => onPause(campaign.id)} className="px-3 py-1.5 rounded-lg bg-yellow-500/10 text-yellow-400 text-xs font-semibold hover:bg-yellow-500/20 transition-colors border border-yellow-500/20">
+            <button onClick={() => onPause(campaign.campaignId)} className="px-3 py-1.5 rounded-lg bg-yellow-500/10 text-yellow-400 text-xs font-semibold hover:bg-yellow-500/20 transition-colors border border-yellow-500/20">
               Pause
             </button>
           )}
           {(campaign.status === 'paused' || campaign.status === 'completed') && (
-            <button onClick={() => onResume(campaign.id)} className="px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-400 text-xs font-semibold hover:bg-blue-500/20 transition-colors border border-blue-500/20">
+            <button onClick={() => onResume(campaign.campaignId)} className="px-3 py-1.5 rounded-lg bg-blue-500/10 text-blue-400 text-xs font-semibold hover:bg-blue-500/20 transition-colors border border-blue-500/20">
               Resume Send
             </button>
           )}
-          {(campaign.status === 'pending' || campaign.status === 'failed') && (
-            <button onClick={() => onRun(campaign.id)} className="px-3 py-1.5 rounded-lg bg-green-500/10 text-green-400 text-xs font-semibold hover:bg-green-500/20 transition-colors border border-green-500/20">
+          {campaign.status === 'draft' && (
+            <button onClick={() => onRun(campaign.campaignId)} className="px-3 py-1.5 rounded-lg bg-green-500/10 text-green-400 text-xs font-semibold hover:bg-green-500/20 transition-colors border border-green-500/20">
               Run
             </button>
           )}
@@ -424,7 +452,12 @@ export default function AdminPage({ onBack }: Props) {
       ]);
       if (camR?.ok) {
         const d = await camR.json();
-        if (d.success) setCampaigns(d.campaigns || []);
+        if (d.success) {
+          const normalized = Array.isArray(d.campaigns)
+            ? d.campaigns.map((raw: CampaignApiPayload) => normalizeCampaign(raw)).filter((c: Campaign) => c.campaignId)
+            : [];
+          setCampaigns(normalized);
+        }
         setServiceOnline(true);
       } else {
         setServiceOnline(false);
@@ -662,7 +695,7 @@ export default function AdminPage({ onBack }: Props) {
           <div className="flex flex-col gap-3">
             {campaigns.map(c => (
               <CampaignRow
-                key={c.id}
+                key={c.campaignId}
                 campaign={c}
                 onRun={handleRun}
                 onPause={handlePause}
