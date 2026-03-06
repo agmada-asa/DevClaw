@@ -273,6 +273,14 @@ export default function LandingPage({ onEnter, onAdmin }: Props) {
           <CrabSVG className="w-full h-auto" />
         </div>
 
+        {/* Red glow — bottom left */}
+        <div className="absolute bottom-0 left-[10%] w-[400px] h-[300px] pointer-events-none animate-glow-pulse"
+          style={{ background: 'radial-gradient(ellipse at center, rgba(232,25,44,0.12) 0%, transparent 70%)', filter: 'blur(60px)', opacity: 0.8 }} />
+
+        {/* Red glow — top right */}
+        <div className="absolute top-0 right-[5%] w-[300px] h-[250px] pointer-events-none animate-glow-pulse"
+          style={{ background: 'radial-gradient(ellipse at center, rgba(232,25,44,0.08) 0%, transparent 70%)', filter: 'blur(50px)', animationDelay: '2s' }} />
+
         {/* Subtle top divider glow */}
         <div
           className="absolute top-0 left-1/2 -translate-x-1/2 w-px h-24 pointer-events-none"
@@ -282,14 +290,14 @@ export default function LandingPage({ onEnter, onAdmin }: Props) {
         {/* Section label */}
         <div className="flex items-center gap-3 mb-4">
           <div className="h-px w-8 bg-gradient-to-r from-transparent to-red-brand/40" />
-          <span className="text-[9px] font-mono text-red-brand/60 tracking-[0.5em] uppercase">The Problem</span>
+          <span className="text-[9px] font-mono text-red-brand tracking-[0.5em] uppercase">The Problem</span>
           <div className="h-px w-8 bg-gradient-to-l from-transparent to-red-brand/40" />
         </div>
 
-        <h2 className="text-2xl md:text-4xl font-thin text-white/80 tracking-widest uppercase text-center mb-3" style={{ letterSpacing: '0.12em' }}>
+        <h2 className="text-2xl md:text-4xl font-thin text-white tracking-widest uppercase text-center mb-3" style={{ letterSpacing: '0.12em', textShadow: '0 0 30px rgba(232,25,44,0.35)' }}>
           Engineering is broken
         </h2>
-        <p className="text-sm text-white/30 max-w-md text-center mb-16 leading-relaxed tracking-wide">
+        <p className="text-sm text-white/45 max-w-md text-center mb-16 leading-relaxed tracking-wide">
           The tools exist. The talent exists. But the workflow gets in the way.
         </p>
 
@@ -297,13 +305,13 @@ export default function LandingPage({ onEnter, onAdmin }: Props) {
           {PROBLEMS.map((p, i) => (
             <div
               key={p.number}
-              className="group flex gap-8 px-8 py-7 border border-white/[0.04] hover:border-red-brand/20 hover:bg-red-950/10 transition-all duration-300"
+              className="group flex gap-8 px-8 py-7 border border-white/[0.08] hover:border-red-brand/40 hover:bg-red-950/10 transition-all duration-300"
               style={{ borderRadius: i === 0 ? '12px 12px 0 0' : i === PROBLEMS.length - 1 ? '0 0 12px 12px' : '0' }}
             >
-              <span className="font-mono text-[11px] text-red-brand/30 group-hover:text-red-brand/60 transition-colors mt-1 flex-shrink-0">{p.number}</span>
+              <span className="font-mono text-[11px] text-red-brand/60 group-hover:text-red-brand transition-colors mt-1 flex-shrink-0">{p.number}</span>
               <div>
-                <h3 className="text-sm font-semibold text-white/70 tracking-widest uppercase mb-2">{p.title}</h3>
-                <p className="text-sm text-white/30 leading-relaxed max-w-xl">{p.body}</p>
+                <h3 className="text-sm font-semibold text-white/80 tracking-widest uppercase mb-2" style={{ textShadow: '0 0 20px rgba(232,25,44,0.2)' }}>{p.title}</h3>
+                <p className="text-sm text-white/45 leading-relaxed max-w-xl">{p.body}</p>
               </div>
             </div>
           ))}
@@ -331,26 +339,29 @@ export default function LandingPage({ onEnter, onAdmin }: Props) {
           <CrabSVG className="w-full h-auto" />
         </div>
 
-        {/* Background glow */}
-        <div
-          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] pointer-events-none"
-          style={{
-            background: 'radial-gradient(ellipse at center, rgba(232,25,44,0.04) 0%, transparent 70%)',
-            filter: 'blur(60px)',
-          }}
-        />
+        {/* Background glow — center */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] pointer-events-none"
+          style={{ background: 'radial-gradient(ellipse at center, rgba(232,25,44,0.06) 0%, transparent 70%)', filter: 'blur(60px)' }} />
+
+        {/* Red glow — top left */}
+        <div className="absolute top-[5%] left-[8%] w-[280px] h-[200px] pointer-events-none animate-glow-pulse"
+          style={{ background: 'radial-gradient(ellipse at center, rgba(232,25,44,0.10) 0%, transparent 70%)', filter: 'blur(55px)', animationDelay: '1s' }} />
+
+        {/* Red glow — bottom right */}
+        <div className="absolute bottom-[5%] right-[8%] w-[350px] h-[250px] pointer-events-none animate-glow-pulse"
+          style={{ background: 'radial-gradient(ellipse at center, rgba(232,25,44,0.09) 0%, transparent 70%)', filter: 'blur(65px)', animationDelay: '3s' }} />
 
         {/* Section label */}
         <div className="flex items-center gap-3 mb-4">
           <div className="h-px w-8 bg-gradient-to-r from-transparent to-red-brand/40" />
-          <span className="text-[9px] font-mono text-red-brand/60 tracking-[0.5em] uppercase">The Solution</span>
+          <span className="text-[9px] font-mono text-red-brand tracking-[0.5em] uppercase">The Solution</span>
           <div className="h-px w-8 bg-gradient-to-l from-transparent to-red-brand/40" />
         </div>
 
-        <h2 className="text-2xl md:text-4xl font-thin text-white/80 tracking-widest uppercase text-center mb-3" style={{ letterSpacing: '0.12em' }}>
+        <h2 className="text-2xl md:text-4xl font-thin text-white tracking-widest uppercase text-center mb-3" style={{ letterSpacing: '0.12em', textShadow: '0 0 30px rgba(232,25,44,0.35)' }}>
           Meet DevClaw
         </h2>
-        <p className="text-sm text-white/30 max-w-md text-center mb-16 leading-relaxed tracking-wide">
+        <p className="text-sm text-white/45 max-w-md text-center mb-16 leading-relaxed tracking-wide">
           An AI agent that turns a message into a merged pull request — no IDE, no manual steps, no waiting.
         </p>
 
@@ -358,20 +369,20 @@ export default function LandingPage({ onEnter, onAdmin }: Props) {
           {SOLUTIONS.map((s) => (
             <div
               key={s.title}
-              className="group flex flex-col gap-4 p-6 border border-white/[0.05] hover:border-red-brand/25 hover:bg-red-950/10 rounded-xl transition-all duration-300"
+              className="group flex flex-col gap-4 p-6 border border-white/[0.08] hover:border-red-brand/40 hover:bg-red-950/10 rounded-xl transition-all duration-300"
             >
-              <div className="w-9 h-9 rounded-lg border border-red-brand/20 group-hover:border-red-brand/50 flex items-center justify-center text-red-brand/50 group-hover:text-red-brand transition-all duration-300">
+              <div className="w-9 h-9 rounded-lg border border-red-brand/40 group-hover:border-red-brand flex items-center justify-center text-red-brand/70 group-hover:text-red-brand transition-all duration-300">
                 {s.icon}
               </div>
-              <h3 className="text-xs font-semibold text-white/60 tracking-widest uppercase">{s.title}</h3>
-              <p className="text-sm text-white/25 leading-relaxed">{s.body}</p>
+              <h3 className="text-xs font-semibold text-white/80 tracking-widest uppercase" style={{ textShadow: '0 0 20px rgba(232,25,44,0.2)' }}>{s.title}</h3>
+              <p className="text-sm text-white/45 leading-relaxed">{s.body}</p>
             </div>
           ))}
         </div>
 
         {/* Bottom CTA */}
         <div className="mt-10 flex flex-col items-center gap-4">
-          <p className="text-[10px] font-mono text-white/20 tracking-[0.4em] uppercase">Ready to ship faster?</p>
+          <p className="text-[10px] font-mono text-white/50 tracking-[0.4em] uppercase">Ready to ship faster?</p>
           <button
             onClick={onEnter}
             className="group inline-flex items-center gap-2 px-10 py-3 rounded-md bg-transparent border border-red-900/80 text-red-500 font-mono text-sm tracking-widest hover:border-red-brand hover:text-red-brand hover:bg-red-950/30 active:scale-95 transition-all duration-300"
