@@ -18,18 +18,18 @@ const STARS = Array.from({ length: 80 }, (_, i) => ({
 const PROBLEMS = [
   {
     number: '01',
-    title: 'Developer time is wasted',
+    title: 'Wasted developer time',
     body: 'Engineers spend hours each week on repetitive tasks — writing boilerplate, opening PRs, updating changelogs — instead of solving real problems.',
   },
   {
     number: '02',
-    title: 'Workflow friction kills momentum',
+    title: 'Workflow friction',
     body: 'Constant context-switching between editors, GitHub, Slack, and CI tools breaks deep focus and slows delivery to a crawl.',
   },
   {
     number: '03',
-    title: 'Teams move too slowly',
-    body: 'Manual code review cycles, stale branches, and integration bottlenecks mean weeks pass between an idea and a merged pull request.',
+    title: 'Death by latency',
+    body: 'Manual review cycles, stale branches, and integration bottlenecks mean weeks pass between an idea and a merged pull request.',
   },
 ];
 
@@ -66,6 +66,14 @@ const SOLUTIONS = [
 export default function LandingPage({ onEnter, onAdmin }: Props) {
   return (
     <div className="bg-[#050505] select-none">
+
+      {/* ── Admin button — fixed top left, always visible ── */}
+      <button
+        onClick={onAdmin}
+        className="fixed top-6 left-6 z-50 text-[10px] text-white/20 hover:text-white/60 font-mono tracking-[0.2em] transition-colors duration-200"
+      >
+        ADMIN
+      </button>
 
       {/* ── Film grain overlay — fixed, covers all sections ── */}
       <div className="grain-overlay" aria-hidden="true" />
@@ -214,14 +222,6 @@ export default function LandingPage({ onEnter, onAdmin }: Props) {
           </button>
         </div>
 
-        {/* Admin — bottom left */}
-        <button
-          onClick={onAdmin}
-          className="absolute bottom-8 left-8 z-20 text-[10px] text-white/20 hover:text-white/60 font-mono tracking-[0.2em] transition-colors duration-200"
-        >
-          ADMIN
-        </button>
-
         {/* Scroll indicator — bottom center */}
         <div className="absolute bottom-8 left-0 right-0 flex flex-col items-center gap-2 animate-bounce opacity-40">
           <span className="text-[10px] font-mono tracking-[0.2em] text-white/80">SCROLL</span>
@@ -239,7 +239,39 @@ export default function LandingPage({ onEnter, onAdmin }: Props) {
       {/* ════════════════════════════════════════════════════
           PROBLEM SECTION
       ════════════════════════════════════════════════════ */}
-      <section className="relative py-32 px-6 flex flex-col items-center" style={{ background: 'linear-gradient(180deg, #050505 0%, #0a0205 100%)' }}>
+      <section className="relative py-32 px-6 flex flex-col items-center overflow-hidden" style={{ background: 'linear-gradient(180deg, #050505 0%, #0a0205 100%)' }}>
+
+        {/* Large floating crab — right side */}
+        <div
+          className="absolute right-[-12%] top-1/2 -translate-y-1/2 w-[340px] pointer-events-none animate-float"
+          style={{ opacity: 0.08, animationDelay: '1s' }}
+        >
+          <CrabSVG className="w-full h-auto" />
+        </div>
+
+        {/* Mini crab — top left */}
+        <div
+          className="absolute top-10 left-[8%] w-[60px] pointer-events-none animate-float"
+          style={{ opacity: 0.12, animationDelay: '0.5s', animationDuration: '5s' }}
+        >
+          <CrabSVG className="w-full h-auto" />
+        </div>
+
+        {/* Large floating crab — left side */}
+        <div
+          className="absolute left-[-8%] top-[30%] w-[280px] pointer-events-none animate-float"
+          style={{ opacity: 0.07, animationDelay: '2.5s' }}
+        >
+          <CrabSVG className="w-full h-auto" />
+        </div>
+
+        {/* Huge crab — center, behind content */}
+        <div
+          className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] pointer-events-none animate-float"
+          style={{ opacity: 0.06, animationDelay: '0.8s' }}
+        >
+          <CrabSVG className="w-full h-auto" />
+        </div>
 
         {/* Subtle top divider glow */}
         <div
@@ -282,6 +314,22 @@ export default function LandingPage({ onEnter, onAdmin }: Props) {
           SOLUTION SECTION
       ════════════════════════════════════════════════════ */}
       <section className="relative py-16 px-6 flex flex-col items-center overflow-hidden" style={{ background: 'linear-gradient(180deg, #0a0205 0%, #050505 100%)' }}>
+
+        {/* Large floating crab — left side */}
+        <div
+          className="absolute left-[-10%] top-1/2 -translate-y-1/2 w-[300px] pointer-events-none animate-float"
+          style={{ opacity: 0.09, animationDelay: '1.5s' }}
+        >
+          <CrabSVG className="w-full h-auto" />
+        </div>
+
+        {/* Mini crab — top right */}
+        <div
+          className="absolute top-6 right-[10%] w-[50px] pointer-events-none animate-float"
+          style={{ opacity: 0.13, animationDelay: '0.3s', animationDuration: '6s' }}
+        >
+          <CrabSVG className="w-full h-auto" />
+        </div>
 
         {/* Background glow */}
         <div
