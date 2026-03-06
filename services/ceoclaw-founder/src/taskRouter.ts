@@ -10,6 +10,7 @@
  * and returns the next concrete action to execute.
  */
 
+import { chat } from '@devclaw/llm-router';
 import { runOpenClawPrompt, extractJsonObject } from './openclawRunner';
 import { BusinessState, RoutedTask, TaskType, TaskDomain, TaskPriority, MRR_GOAL } from './founderTypes';
 
@@ -119,7 +120,24 @@ const parseRoutedTask = (raw: string): RoutedTask => {
     };
 };
 
-// ─── Fallback heuristic (when OpenClaw CLI is unavailable) ────────────────────
+// ─── Direct Z.AI GLM routing (no CLI dependency) ─────────────────────────────
+//
+// When CEOCLAW_AGENT_ENGINE=direct, call glm-z1-flash (the orchestrator role)
+// directly via the llm-router instead of invoking the openclaw CLI binary.
+// This mode makes CEOClaw fully self-contained for demos and production.
+
+const directRoute = async (state: BusinessState, recentTasks: string[]): Promise<RoutedTask> => {
+    const prompt = buildRoutingPrompt(state, recentTasks);
+    const response = await chat({
+        role: 'orchestrator',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.3,
+        requestId: `ceoclaw-router-${Date.now()}`,
+    });
+    return parseRoutedTask(response.content);
+};
+
+// ─── Fallback heuristic (when no AI routing is available) ────────────────────
 
 const heuristicRoute = (state: BusinessState, recentTasks: string[]): RoutedTask => {
     // If no landing page → build one first
@@ -155,22 +173,37 @@ export const routeNextTask = async (
     state: BusinessState,
     recentTaskTypes: string[]
 ): Promise<RoutedTask> => {
-    const engine = (process.env.CEOCLAW_AGENT_ENGINE || 'openclaw').toLowerCase();
+    const engine = (process.env.CEOCLAW_AGENT_ENGINE || 'direct').toLowerCase();
 
-    if (engine !== 'openclaw') {
-        console.log('[TaskRouter] Using heuristic routing (CEOCLAW_AGENT_ENGINE != openclaw)');
-        return heuristicRoute(state, recentTaskTypes);
+    // direct — call Z.AI GLM (glm-z1-flash via orchestrator role) without CLI
+    if (engine === 'direct') {
+        console.log('[TaskRouter] Using direct Z.AI GLM routing (glm-z1-flash)...');
+        try {
+            const task = await directRoute(state, recentTaskTypes);
+            console.log(`[TaskRouter] GLM routed to: ${task.taskType} (${task.priority}) — ${task.reason}`);
+            return task;
+        } catch (err: any) {
+            console.warn(`[TaskRouter] Direct GLM routing failed, using heuristic: ${err.message}`);
+            return heuristicRoute(state, recentTaskTypes);
+        }
     }
 
-    console.log('[TaskRouter] Asking OpenClaw to route next task...');
-    try {
-        const prompt = buildRoutingPrompt(state, recentTaskTypes);
-        const raw = await runOpenClawPrompt(prompt, { timeoutMs: 60_000 });
-        const task = parseRoutedTask(raw);
-        console.log(`[TaskRouter] Routed to: ${task.taskType} (${task.priority}) — ${task.reason}`);
-        return task;
-    } catch (err: any) {
-        console.warn(`[TaskRouter] OpenClaw routing failed, using heuristic: ${err.message}`);
-        return heuristicRoute(state, recentTaskTypes);
+    // openclaw — invoke the OpenClaw CLI gateway
+    if (engine === 'openclaw') {
+        console.log('[TaskRouter] Asking OpenClaw CLI to route next task...');
+        try {
+            const prompt = buildRoutingPrompt(state, recentTaskTypes);
+            const raw = await runOpenClawPrompt(prompt, { timeoutMs: 60_000 });
+            const task = parseRoutedTask(raw);
+            console.log(`[TaskRouter] Routed to: ${task.taskType} (${task.priority}) — ${task.reason}`);
+            return task;
+        } catch (err: any) {
+            console.warn(`[TaskRouter] OpenClaw CLI routing failed, using heuristic: ${err.message}`);
+            return heuristicRoute(state, recentTaskTypes);
+        }
     }
+
+    // heuristic — deterministic fallback, no AI required
+    console.log('[TaskRouter] Using heuristic routing (CEOCLAW_AGENT_ENGINE=heuristic)');
+    return heuristicRoute(state, recentTaskTypes);
 };

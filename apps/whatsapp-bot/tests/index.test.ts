@@ -61,7 +61,7 @@ describe('WhatsApp Client message formatting', () => {
         await handleMessage(mockMsg);
 
         expect(mockReply).toHaveBeenCalledWith(
-            'Invalid command. Please use /help to see the list of available commands and the setup flow.'
+            `I didn't understand that. 🤔\n\nUse /help to see available commands, or /task [description] to create a new task.`
         );
         expect(axios.post).not.toHaveBeenCalled();
     });
@@ -95,7 +95,7 @@ describe('WhatsApp Client message formatting', () => {
             },
             expect.objectContaining({ timeout: 1200000 })
         );
-        expect(mockReply).toHaveBeenCalledWith('Task received and sent to gateway. Evaluating...');
+        expect(mockReply).toHaveBeenCalledWith('🤖 Task received! Generating an architecture plan...');
     });
 
     it('should accept messages with /request prefix', async () => {
@@ -116,6 +116,6 @@ describe('WhatsApp Client message formatting', () => {
             expect.any(Object),
             expect.objectContaining({ timeout: 1200000 })
         );
-        expect(mockReply).toHaveBeenCalledWith('Task received and sent to gateway. Evaluating...');
+        expect(mockReply).toHaveBeenCalledWith('🤖 Task received! Generating an architecture plan...');
     });
 });

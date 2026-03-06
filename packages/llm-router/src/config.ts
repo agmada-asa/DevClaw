@@ -27,30 +27,25 @@ export interface ModelConfig {
 
 // ─── Z.AI GLM model selection ─────────────────────────────────────────────────
 //
-// Different GLM variants are chosen based on the cognitive demand of each role:
+// Three GLM models are used, each routed to the best available path:
 //
-//   glm-z1-flash   — Z.AI's reasoning model (chain-of-thought). Used for roles
-//                    that require deep analysis: planning, orchestration.
-//   glm-4.7-flash  — Z.AI's fast generation model. Used for high-throughput
-//                    roles: code generation, review, prospect scoring, copy.
-//   glm-4-long     — Z.AI's 128k-context model. Used for roles that process
-//                    large codebases or long architecture documents.
+//   glm-4.7-flash  — direct Z.AI API  (confirmed working; generation/review)
+//   glm-z1-flash   — OpenRouter       (dedicated reasoning model; orchestration/qualification)
+//   glm-4-long     — OpenRouter       (128k-context model; architecture planning)
 //
-// Every value can be overridden via env var to switch GLM variants without a redeploy.
+// For models unavailable on the direct Z.AI key, OpenRouter is the PRIMARY
+// provider. The safety net for those roles falls back to glm-4.7-flash direct.
+//
+// Override via env vars to switch models without a redeploy.
 
-// Reasoning roles — needs chain-of-thought, not raw speed.
-const ZAI_REASONING_MODEL = process.env.REASONING_MODEL || 'glm-z1-flash';
+// Direct Z.AI (open.bigmodel.cn) — glm-4.7-flash confirmed available
+const ZAI_FLASH_MODEL    = process.env.GENERATOR_MODEL   || 'glm-4.7-flash';
+const ZAI_REVIEWER_MODEL = process.env.REVIEWER_MODEL    || 'glm-4.7-flash';
 
-// Generation roles — optimised for fast, high-quality code output.
-const ZAI_GENERATOR_MODEL = process.env.GENERATOR_MODEL || 'glm-4.7-flash';
-const ZAI_REVIEWER_MODEL  = process.env.REVIEWER_MODEL  || 'glm-4.7-flash';
-
-// Long-context roles — architecture plans and large file reviews.
-const ZAI_LONGCTX_MODEL = process.env.LONGCTX_MODEL || 'glm-4-long';
-
-// Fallback: reach the same GLM family via OpenRouter if Z.AI direct is down.
-const ZAI_OPENROUTER_FALLBACK_MODEL = process.env.ZAI_OPENROUTER_MODEL || 'z-ai/glm-4.7-flash';
-const ZAI_OPENROUTER_REASONING_FALLBACK = process.env.ZAI_OPENROUTER_REASONING_MODEL || 'z-ai/glm-z1-flash';
+// OpenRouter paths for models not directly reachable on this key
+const OR_REASONING_MODEL = process.env.OR_REASONING_MODEL || 'z-ai/glm-z1-flash';
+const OR_LONGCTX_MODEL   = process.env.OR_LONGCTX_MODEL   || 'z-ai/glm-4-long';
+const OR_FLASH_FALLBACK  = process.env.OR_FLASH_MODEL     || 'z-ai/glm-4.7-flash';
 
 const GENERATOR_POLICY: RolePolicy = {
   timeoutMs: 1200_000,
@@ -65,115 +60,100 @@ const REVIEWER_POLICY: RolePolicy = {
 };
 
 const REASONING_POLICY: RolePolicy = {
-  // Reasoning models take longer — allow extra time for chain-of-thought.
+  timeoutMs: 180_000,
+  maxRetries: 1,
+  fallbackOn: ['timeout', 'http5xx', 'http429'],
+};
+
+const LONGCTX_POLICY: RolePolicy = {
   timeoutMs: 900_000,
   maxRetries: 1,
   fallbackOn: ['timeout', 'http5xx'],
 };
 
 // ─── Model config ─────────────────────────────────────────────────────────────
-//
-// Z.AI GLM is the sole AI engine powering DevClaw. Every role maps to a GLM
-// variant tuned for that role's cognitive profile. OpenRouter is the emergency
-// fallback route to the same GLM family — never a different model family.
 export const MODEL_CONFIG: Record<ModelRole, ModelConfig> = {
 
-  // ── DevClaw: code generation ────────────────────────────────────────────────
+  // ── DevClaw: code generation ─────────────────────────────────────────────────
+  // glm-4.7-flash via direct Z.AI — fast generation with native CoT
 
-  // generator — GLM-4.7-Flash writes the code patch from the approved plan.
   generator: {
     provider: 'zai',
-    modelId: ZAI_GENERATOR_MODEL,
-    fallback: { provider: 'openrouter', modelId: ZAI_OPENROUTER_FALLBACK_MODEL },
+    modelId: ZAI_FLASH_MODEL,
+    fallback: { provider: 'openrouter', modelId: OR_FLASH_FALLBACK },
     policy: GENERATOR_POLICY,
   },
 
-  // reviewer — GLM-4.7-Flash checks the generated patch for correctness.
   reviewer: {
     provider: 'zai',
     modelId: ZAI_REVIEWER_MODEL,
-    fallback: { provider: 'openrouter', modelId: ZAI_OPENROUTER_FALLBACK_MODEL },
+    fallback: { provider: 'openrouter', modelId: OR_FLASH_FALLBACK },
     policy: REVIEWER_POLICY,
   },
 
-  // frontend_generator — GLM-4.7-Flash generates frontend code patches.
   frontend_generator: {
     provider: 'zai',
-    modelId: ZAI_GENERATOR_MODEL,
-    fallback: { provider: 'openrouter', modelId: ZAI_OPENROUTER_FALLBACK_MODEL },
+    modelId: ZAI_FLASH_MODEL,
+    fallback: { provider: 'openrouter', modelId: OR_FLASH_FALLBACK },
     policy: GENERATOR_POLICY,
   },
 
-  // frontend_reviewer — GLM-4.7-Flash reviews frontend patches.
   frontend_reviewer: {
     provider: 'zai',
     modelId: ZAI_REVIEWER_MODEL,
-    fallback: { provider: 'openrouter', modelId: ZAI_OPENROUTER_FALLBACK_MODEL },
+    fallback: { provider: 'openrouter', modelId: OR_FLASH_FALLBACK },
     policy: REVIEWER_POLICY,
   },
 
-  // backend_generator — GLM-4.7-Flash generates backend code patches.
   backend_generator: {
     provider: 'zai',
-    modelId: ZAI_GENERATOR_MODEL,
-    fallback: { provider: 'openrouter', modelId: ZAI_OPENROUTER_FALLBACK_MODEL },
+    modelId: ZAI_FLASH_MODEL,
+    fallback: { provider: 'openrouter', modelId: OR_FLASH_FALLBACK },
     policy: GENERATOR_POLICY,
   },
 
-  // backend_reviewer — GLM-4.7-Flash reviews backend patches.
   backend_reviewer: {
     provider: 'zai',
     modelId: ZAI_REVIEWER_MODEL,
-    fallback: { provider: 'openrouter', modelId: ZAI_OPENROUTER_FALLBACK_MODEL },
+    fallback: { provider: 'openrouter', modelId: OR_FLASH_FALLBACK },
     policy: REVIEWER_POLICY,
   },
 
-  // ── DevClaw: reasoning & orchestration ─────────────────────────────────────
+  // ── DevClaw: reasoning & orchestration ───────────────────────────────────────
+  // glm-z1-flash via OpenRouter — deep reasoning / chain-of-thought
+  // glm-4-long  via OpenRouter — 128k context for full-codebase planning
 
-  // orchestrator — GLM-Z1-Flash reasons over the workflow state and decides
-  // the next step. Chain-of-thought is essential here; speed is secondary.
   orchestrator: {
-    provider: 'zai',
-    modelId: ZAI_REASONING_MODEL,
-    fallback: { provider: 'openrouter', modelId: ZAI_OPENROUTER_REASONING_FALLBACK },
+    provider: 'openrouter',
+    modelId: OR_REASONING_MODEL,
+    fallback: { provider: 'zai', modelId: ZAI_FLASH_MODEL },
     policy: REASONING_POLICY,
   },
 
-  // planner — GLM-4-Long produces the architecture plan from natural language.
-  // Uses the long-context model so it can reason over entire codebases.
   planner: {
-    provider: 'zai',
-    modelId: ZAI_LONGCTX_MODEL,
-    fallback: { provider: 'openrouter', modelId: ZAI_OPENROUTER_FALLBACK_MODEL },
-    policy: {
-      timeoutMs: 900_000,
-      maxRetries: 1,
-      fallbackOn: ['timeout', 'http5xx'],
-    },
+    provider: 'openrouter',
+    modelId: OR_LONGCTX_MODEL,
+    fallback: { provider: 'zai', modelId: ZAI_FLASH_MODEL },
+    policy: LONGCTX_POLICY,
   },
 
-  // ── CEOClaw: autonomous founder agent ──────────────────────────────────────
+  // ── CEOClaw: autonomous founder agent ────────────────────────────────────────
+  // prospect_qualifier uses glm-z1-flash reasoning to score company fit
+  // outreach_writer uses glm-4.7-flash for personalised message generation
 
-  // prospect_qualifier — GLM-Z1-Flash analyses company profiles and scores fit.
-  // Reasoning model ensures nuanced qualification, not keyword matching.
   prospect_qualifier: {
-    provider: 'zai',
-    modelId: process.env.QUALIFIER_MODEL || ZAI_REASONING_MODEL,
-    fallback: { provider: 'openrouter', modelId: ZAI_OPENROUTER_REASONING_FALLBACK },
-    policy: {
-      timeoutMs: 90_000,
-      maxRetries: 2,
-      fallbackOn: ['timeout', 'http5xx', 'http429'],
-    },
+    provider: 'openrouter',
+    modelId: process.env.QUALIFIER_MODEL || OR_REASONING_MODEL,
+    fallback: { provider: 'zai', modelId: ZAI_FLASH_MODEL },
+    policy: REASONING_POLICY,
   },
 
-  // outreach_writer — GLM-4.7-Flash generates personalised LinkedIn messages.
   outreach_writer: {
     provider: 'zai',
-    modelId: ZAI_GENERATOR_MODEL,
-    fallback: { provider: 'openrouter', modelId: ZAI_OPENROUTER_FALLBACK_MODEL },
+    modelId: ZAI_FLASH_MODEL,
+    fallback: { provider: 'openrouter', modelId: OR_FLASH_FALLBACK },
     policy: {
-      timeoutMs: 60_000,
+      timeoutMs: 120_000,
       maxRetries: 1,
       fallbackOn: ['timeout', 'http5xx', 'http429'],
     },

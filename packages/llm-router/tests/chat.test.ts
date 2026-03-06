@@ -83,20 +83,20 @@ describe('role routing — Z.AI is the core engine', () => {
     expect(result.provider).toBe('zai');
   });
 
-  it('routes planner to Z.AI GLM', async () => {
+  it('routes planner to OpenRouter (glm-4-long)', async () => {
     mockPost.mockResolvedValueOnce(MOCK_SUCCESS);
     const result = await chat({ role: 'planner', messages: [{ role: 'user', content: 'Generate architecture plan' }] });
     const [url] = mockPost.mock.calls[0];
-    expect(url).toContain('bigmodel.cn');
-    expect(result.provider).toBe('zai');
+    expect(url).toContain('openrouter.ai');
+    expect(result.provider).toBe('openrouter');
   });
 
-  it('routes orchestrator to Z.AI GLM', async () => {
+  it('routes orchestrator to OpenRouter (glm-z1-flash)', async () => {
     mockPost.mockResolvedValueOnce(MOCK_SUCCESS);
     const result = await chat({ role: 'orchestrator', messages: [{ role: 'user', content: 'Coordinate workflow' }] });
     const [url] = mockPost.mock.calls[0];
-    expect(url).toContain('bigmodel.cn');
-    expect(result.provider).toBe('zai');
+    expect(url).toContain('openrouter.ai');
+    expect(result.provider).toBe('openrouter');
   });
 
   it('legacy generator and reviewer both route to Z.AI', async () => {

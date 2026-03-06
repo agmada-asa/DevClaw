@@ -37,7 +37,13 @@ export async function callZai(
     },
   );
 
+  // GLM-4.7-Flash uses a two-phase streaming format:
+  //   Phase 1 — chain-of-thought: delta.reasoning_content tokens (thinking)
+  //   Phase 2 — final answer:     delta.content tokens (the actual reply)
+  // We accumulate both separately and return whichever is non-empty, preferring
+  // the actual answer (content) when the model completes its reasoning phase.
   let accumulatedContent = '';
+  let accumulatedReasoning = '';
   let buffer = '';
 
   for await (const chunk of response.data) {
@@ -54,8 +60,14 @@ export async function callZai(
 
       try {
         const parsed = JSON.parse(dataStr);
-        if (parsed.choices?.[0]?.delta?.content) {
-          accumulatedContent += parsed.choices[0].delta.content;
+        const delta = parsed.choices?.[0]?.delta;
+        if (!delta) continue;
+
+        // Prefer final answer content; fall back to chain-of-thought reasoning
+        if (delta.content) {
+          accumulatedContent += delta.content;
+        } else if (delta.reasoning_content) {
+          accumulatedReasoning += delta.reasoning_content;
         }
       } catch (e) {
         // Ignored, maybe partial chunk
@@ -63,8 +75,12 @@ export async function callZai(
     }
   }
 
+  // Return final answer if the model completed its reasoning phase;
+  // otherwise return the reasoning content (e.g. when maxTokens was hit mid-think).
+  const content = accumulatedContent || accumulatedReasoning;
+
   return {
-    content: accumulatedContent,
+    content,
     model: modelId,
     provider: 'zai',
   };

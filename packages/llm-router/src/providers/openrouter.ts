@@ -36,7 +36,10 @@ export async function callOpenRouter(
         },
     );
 
+    // Z.AI GLM models served via OpenRouter also use a two-phase streaming
+    // format: reasoning_content (chain-of-thought) then content (final answer).
     let accumulatedContent = '';
+    let accumulatedReasoning = '';
     let buffer = '';
 
     for await (const chunk of response.data) {
@@ -53,8 +56,13 @@ export async function callOpenRouter(
 
             try {
                 const parsed = JSON.parse(dataStr);
-                if (parsed.choices?.[0]?.delta?.content) {
-                    accumulatedContent += parsed.choices[0].delta.content;
+                const delta = parsed.choices?.[0]?.delta;
+                if (!delta) continue;
+
+                if (delta.content) {
+                    accumulatedContent += delta.content;
+                } else if (delta.reasoning_content) {
+                    accumulatedReasoning += delta.reasoning_content;
                 }
             } catch (e) {
                 // Ignored, maybe partial chunk
@@ -62,8 +70,10 @@ export async function callOpenRouter(
         }
     }
 
+    const content = accumulatedContent || accumulatedReasoning;
+
     return {
-        content: accumulatedContent,
+        content,
         model: modelId,
         provider: 'openrouter',
     };
