@@ -13,6 +13,8 @@ import { chat } from '@devclaw/llm-router';
 import { runOpenClawPrompt, extractJsonObject, parseNumberEnv } from './openclawRunner';
 import { QualifyInput, QualificationResult, MessageInput, MessageResult } from './types';
 
+const LANDING_PAGE_URL = process.env.CEOCLAW_LANDING_PAGE_URL || 'https://devclaw.ai';
+
 // ─── Qualification ────────────────────────────────────────────────────────────
 
 const buildQualifyPrompt = (input: QualifyInput): string => [
@@ -61,16 +63,24 @@ const parseQualificationResult = (text: string): QualificationResult => {
 // ─── Message Generation ───────────────────────────────────────────────────────
 
 const buildMessagePrompt = (input: MessageInput): string => [
-    'You are CEOClaw, writing LinkedIn outreach for DevClaw.',
+    'You are CEOClaw, writing LinkedIn outreach for DevClaw — the AI engineering team for startups.',
     '',
-    'DevClaw lets developers describe tasks in Telegram and get back a GitHub PR — AI handles planning, coding, and review.',
+    'DevClaw is the fastest path from idea to production PR:',
+    '1. Describe a bug or feature in plain English on Telegram',
+    '2. DevClaw creates a GitHub issue and proposes an architecture plan',
+    '3. Human approves the plan (one message: /approve)',
+    '4. AI Generator + Reviewer agents write, review, and document the code',
+    '5. A production-ready pull request lands in your repo — often in under 5 minutes',
+    '6. All for £29/mo. No hiring. No meetings. No delays.',
+    '',
+    `Sign up and get early access at: ${LANDING_PAGE_URL}`,
     '',
     'Write a SHORT LinkedIn connection request note:',
     '- Max 300 characters (hard LinkedIn limit)',
-    '- Conversational and human, not spammy or salesy',
-    '- Reference their specific role or company',
-    '- One-line value prop of DevClaw',
-    '- Soft CTA: offer a quick demo',
+    '- Lead with their specific pain as a technical leader (shipping speed, dev costs, PRs piling up)',
+    '- Name-drop DevClaw and what makes it special (Telegram → reviewed PR in minutes)',
+    `- End with a punchy CTA pointing to ${LANDING_PAGE_URL}`,
+    '- Human, direct, and confident — not spammy or corporate',
     '',
     'Return ONLY valid JSON (no markdown):',
     '{"message":"string (≤300 chars)","subject":"string (optional follow-up subject line)"}',

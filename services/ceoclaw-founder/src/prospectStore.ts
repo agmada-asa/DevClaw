@@ -210,6 +210,19 @@ export const getProspectsByCampaign = async (campaignId: string): Promise<Prospe
     return data.map(mapProspectRow);
 };
 
+export const getProspectsByStatus = async (status: ProspectStatus): Promise<ProspectRecord[]> => {
+    const db = getSupabase();
+    if (!db) return [];
+    const { data, error } = await db
+        .from('ceoclaw_prospects')
+        .select('*')
+        .eq('status', status)
+        .order('connection_sent_at', { ascending: true });
+
+    if (error || !data) return [];
+    return data.map(mapProspectRow);
+};
+
 export const isAlreadyProspected = async (
     campaignId: string,
     linkedinProfileUrl: string

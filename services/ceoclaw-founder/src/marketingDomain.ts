@@ -37,6 +37,8 @@ const pickSeoTopic = (state: BusinessState): string => {
     return SEO_TOPICS[idx];
 };
 
+const LANDING_PAGE_URL = process.env.CEOCLAW_LANDING_PAGE_URL || 'https://devclaw.ai';
+
 const buildSeoContentPrompt = (state: BusinessState, topic: string): string => [
     'You are CEOClaw, writing SEO content for the DevClaw blog.',
     '',
@@ -52,7 +54,7 @@ const buildSeoContentPrompt = (state: BusinessState, topic: string): string => [
     '  - Length: 800-1200 words',
     '  - Include real, practical value (not fluff)',
     '  - Naturally mention DevClaw as the solution at least twice',
-    '  - Include a clear CTA at the end linking to the DevClaw landing page',
+    `  - Include a clear CTA at the end linking to ${LANDING_PAGE_URL}`,
     '  - Output in Markdown format',
     '',
     'Return ONLY valid JSON:',
@@ -106,6 +108,7 @@ const buildCampaignPrompt = (state: BusinessState): string => [
     '',
     'DevClaw automates GitHub PRs via Telegram + AI agents.',
     'Target customers: startup CTOs, dev shop owners, small team tech leads.',
+    `Landing page: ${LANDING_PAGE_URL}`,
     '',
     `Current state: MRR=$${state.mrr}, signups=${state.totalSignups}, traffic=${state.trafficLast30d}/month`,
     state.latestIdea ? `Product angle: ${state.latestIdea}` : '',
@@ -115,7 +118,7 @@ const buildCampaignPrompt = (state: BusinessState): string => [
     '  - Choose channels (LinkedIn + cold email preferred)',
     '  - Write the opening message angle (hook in 1 sentence)',
     '  - Write a subject line for email outreach',
-    '  - Write a 3-message follow-up sequence (brief outline per message)',
+    `  - Write a 3-message follow-up sequence — final message should include a CTA linking to ${LANDING_PAGE_URL}`,
     '  - The goal is to get a demo call or free trial signup',
     '',
     'Return ONLY valid JSON:',

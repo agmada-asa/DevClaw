@@ -27,8 +27,8 @@ const createMockChat = (): jest.MockedFunction<(request: ChatRequest) => Promise
 
         return {
             content: 'Proposed implementation output.',
-            model: 'deepseek-ai/DeepSeek-V3.2',
-            provider: 'flock',
+            model: 'glm-4.7-flash',
+            provider: 'zai',
         };
     });
 
@@ -64,7 +64,7 @@ describe('Agent factories', () => {
             2,
             expect.objectContaining({ role: 'frontend_reviewer' })
         );
-        expect(generation.provider).toBe('flock');
+        expect(generation.provider).toBe('zai');
         expect(review.provider).toBe('zai');
         expect(review.decision).toBe('APPROVED');
     });

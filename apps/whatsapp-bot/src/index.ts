@@ -38,6 +38,7 @@ const resolveGatewayTimeoutMs = (type: string): number => {
 const client = new Client({
     authStrategy: new LocalAuth(),
     puppeteer: {
+        executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
     }
 });
@@ -52,17 +53,21 @@ client.on('ready', () => {
     console.log('[WhatsApp] Client is ready!');
 });
 
-const WELCOME_MESSAGE = `Welcome to DevClaw! 🚀
+const WELCOME_MESSAGE = `👋 *Welcome to DevClaw!*
 
-Here is how to get started:
-1. Use /login to link your GitHub account.
-2. Use /repo <owner>/<repo> to link the repository you want to work on.
-3. Use /task (or /request) followed by your description to create new tasks/issues.
+I turn your ideas into code — just describe what you want and I'll handle the rest.
 
-Other useful commands:
-/status - Check your current login and linked repository status.
-/repos - List the GitHub repositories you have access to.
-/help - Show this message again.`;
+*Getting started:*
+1️⃣ /login — Link your GitHub account
+2️⃣ /repo owner/repo — Set your repository
+3️⃣ /task [description] — Create a coding task
+
+*Other commands:*
+• /repos — List your GitHub repositories
+• /status — Check your connection
+• /help — Show this message
+
+_Once a plan is ready, just reply *yes* to approve, *no* to cancel, or *refine [instructions]* to adjust it._`;
 
 export const handleMessage = async (message: any) => {
     // Ignore updates from statuses
@@ -71,7 +76,7 @@ export const handleMessage = async (message: any) => {
     // Ignore messages that are not standard text
     if (message.type !== 'chat') return;
 
-    const text = message.body.trim();
+    let text = message.body.trim();
 
     // Handle login command locally
     if (text.toLowerCase() === '/login' || text.toLowerCase() === '/github_login') {
@@ -102,6 +107,7 @@ export const handleMessage = async (message: any) => {
     }
 
     const tLower = text.toLowerCase();
+
     const isTaskRequest = tLower.startsWith('/task ') || tLower === '/task' ||
         tLower.startsWith('/request ') || tLower === '/request';
 
@@ -115,7 +121,7 @@ export const handleMessage = async (message: any) => {
 
     if (!isTaskRequest && !isRepoLinkRequest && !isReposListRequest && !isStatusRequest &&
         !isApproveRequest && !isRejectRequest && !isRefineRequest) {
-        return message.reply('Invalid command. Please use /help to see the list of available commands and the setup flow.');
+        return message.reply(`I didn't understand that. 🤔\n\nUse /help to see available commands, or /task [description] to create a new task.`);
     }
 
     try {
@@ -148,19 +154,19 @@ export const handleMessage = async (message: any) => {
             let replyMessage = response.data?.message;
             if (!replyMessage) {
                 if (isReposListRequest) {
-                    replyMessage = 'Repository list request sent to gateway.';
+                    replyMessage = '📋 Fetching your repositories...';
                 } else if (isRepoLinkRequest) {
-                    replyMessage = 'Repository link request sent to gateway.';
+                    replyMessage = '🔗 Repository linked! Use /task [description] to create a task.';
                 } else if (isStatusRequest) {
-                    replyMessage = 'Status request sent to gateway.';
+                    replyMessage = '🔍 Fetching your status...';
                 } else if (isApproveRequest) {
-                    replyMessage = 'Approval sent to gateway.';
+                    replyMessage = '✅ Plan approved! Starting implementation...';
                 } else if (isRejectRequest) {
-                    replyMessage = 'Rejection sent to gateway.';
+                    replyMessage = '❌ Plan cancelled.';
                 } else if (isRefineRequest) {
-                    replyMessage = 'Refinement request sent to gateway. Evaluating...';
+                    replyMessage = '⚙️ Refining the plan with your instructions...';
                 } else {
-                    replyMessage = 'Task received and sent to gateway. Evaluating...';
+                    replyMessage = '🤖 Task received! Generating an architecture plan...';
                 }
             }
             await message.reply(replyMessage);
@@ -190,6 +196,7 @@ httpApp.post('/api/send', async (req: express.Request, res: express.Response) =>
     try {
         // WhatsApp chatId format: '<number>@c.us' for individuals
         const formattedId = chatId.includes('@') ? chatId : `${chatId}@c.us`;
+
         await client.sendMessage(formattedId, message);
         res.status(200).json({ success: true });
     } catch (error: any) {

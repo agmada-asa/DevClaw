@@ -222,6 +222,51 @@ const buildRevisionPrompt = (input: OpenClawRevisionPromptInput): string => {
     ].join('\n');
 };
 
+const runGatewayAgentPrompt = async (prompt: string): Promise<string> => {
+    const cliBin = process.env.OPENCLAW_CLI_BIN || 'openclaw';
+    const timeoutMs = parseNumberEnv(process.env.OPENCLAW_CLI_TIMEOUT_MS, 20 * 60 * 1000);
+    const timeoutSeconds = Math.max(1, Math.ceil(timeoutMs / 1000));
+    const params = {
+        message: prompt,
+        to: resolvePlannerRecipient(),
+        timeout: timeoutSeconds,
+        idempotencyKey: `planner-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`,
+    };
+    const args = [
+        'gateway',
+        'call',
+        'agent',
+        '--json',
+        '--expect-final',
+        '--timeout',
+        String(timeoutMs),
+        '--params',
+        JSON.stringify(params),
+    ];
+
+    if (process.env.OPENCLAW_GATEWAY_URL) {
+        args.push('--url', process.env.OPENCLAW_GATEWAY_URL);
+    }
+
+    try {
+        const { stdout, stderr } = await execFileAsync(cliBin, args, {
+            timeout: timeoutMs + 5000,
+            maxBuffer: 8 * 1024 * 1024,
+        });
+
+        if (typeof stderr === 'string' && stderr.trim()) {
+            console.warn('[OpenClawEngine] OpenClaw stderr:', stderr.trim());
+        }
+
+        return extractPlannerTextFromCliOutput(stdout);
+    } catch (err: any) {
+        const stderr = typeof err?.stderr === 'string' ? err.stderr.trim() : '';
+        const stdout = typeof err?.stdout === 'string' ? err.stdout.trim() : '';
+        const detail = stderr || stdout || err?.message || 'unknown OpenClaw gateway error';
+        throw new Error(`OpenClaw gateway invocation failed: ${detail}`);
+    }
+};
+
 const runAgentLocalPrompt = async (prompt: string): Promise<string> => {
     const cliBin = process.env.OPENCLAW_CLI_BIN || 'openclaw';
     const timeoutMs = parseNumberEnv(process.env.OPENCLAW_CLI_TIMEOUT_MS, 20 * 60 * 1000);
@@ -259,14 +304,10 @@ const runAgentLocalPrompt = async (prompt: string): Promise<string> => {
 };
 
 const runOpenClawPlannerPrompt = async (prompt: string): Promise<PlannerOutputPayload> => {
-    const mode = (process.env.OPENCLAW_CLI_MODE || 'agent-local').toLowerCase();
-    if (mode !== 'agent-local') {
-        throw new Error(
-            `Unsupported OPENCLAW_CLI_MODE="${mode}". Only "agent-local" is allowed for isolated execution.`
-        );
-    }
-
-    const raw = await runAgentLocalPrompt(prompt);
+    const mode = (process.env.OPENCLAW_CLI_MODE || 'gateway').toLowerCase();
+    const raw = mode === 'agent-local'
+        ? await runAgentLocalPrompt(prompt)
+        : await runGatewayAgentPrompt(prompt);
 
     return parsePlannerPayload(raw);
 };

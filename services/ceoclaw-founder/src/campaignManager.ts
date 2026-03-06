@@ -258,6 +258,8 @@ const runOutreachSending = async (
             prospectId: p.prospectId,
             profileUrl: p.linkedinProfileUrl,
             message: p.outreachMessage!,
+            firstName: p.firstName,
+            lastName: p.lastName,
         }));
 
     const results = await sendOutreachBatch(targets);

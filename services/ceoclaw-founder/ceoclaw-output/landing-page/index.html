@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevClaw - Ship Features 10x Faster</title>
+    <style>
+        :root {
+            --bg-dark: #0B0F19;
+            --bg-card: #151B2B;
+            --primary: #6366F1;
+            --primary-hover: #4F46E5;
+            --text-main: #F3F4F6;
+            --text-muted: #9CA3AF;
+            --accent: #10B981;
+            --border: #1F2937;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            line-height: 1.6;
+            overflow-x: hidden;
+        }
+
+        a { text-decoration: none; color: inherit; transition: 0.2s; }
+        ul { list-style: none; }
+
+        /* Layout Utilities */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        .section {
+            padding: 80px 0;
+        }
+
+        .text-center { text-align: center; }
+        .flex-center { display: flex; justify-content: center; align-items: center; }
+
+        /* Header */
+        header {
+            padding: 20px 0;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            background: rgba(11, 15, 25, 0.9);
+            backdrop-filter: blur(10px);
+            z-index: 100;
+        }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-weight: 800;
+            font-size: 1.5rem;
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .logo span { color: var(--primary); }
+
+        .nav-btn {
+            background: transparent;
+            border: 1px solid var(--border);
+            padding: 8px 16px;
+            border-radius: 6px;
+            color: var(--text-main);
+            font-size: 0.9rem;
+        }
+
+        .nav-btn:hover { border-color: var(--primary); }
+
+        /* Hero */
+        .hero {
+            padding: 100px 0 80px;
+            background: radial-gradient(circle at 50% 0%, #1e1b4b 0%, var(--bg-dark) 50%);
+        }
+
+        .hero h1 {
+            font-size: 3.5rem;
+            line-height: 1.1;
+            margin-bottom: 24px;
+            font-weight: 800;
+            background: linear-gradient(to right, #fff, #9ca3af);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero p {
+            font-size: 1.25rem;
+            color: var(--text-muted);
+            max-width: 600px;
+            margin: 0 auto 40px;
+        }
+
+        /* Form */
+        .signup-form {
+            display: flex;
+            gap: 10px;
+            max-width: 450px;
+            margin: 0 auto;
+        }
+
+        .signup-form input {
+            flex: 1;
+            padding: 14px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            color: white;
+            font-size: 1rem;
+            outline: none;
+        }
+
+        .signup-form input:focus { border-color: var(--primary); }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 14px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+            white-space: nowrap;
+        }
+
+        .btn-primary:hover { background: var(--primary-hover); }
+
+        /* Social Proof */
+        .social-proof {
+            padding: 40px 0;
+            border-bottom: 1px solid var(--border);
+        }
+        .logos {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            opacity: 0.5;
+            flex-wrap: wrap;
+        }
+        .logo-placeholder {
+            font-weight: 700;
+            font-size: 1.2rem;
+            color: var(--text-muted);
+        }
+
+        /* Value Prop */
+        .value-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 30px;
+            margin-top: 60px;
+        }
+
+        .value-card {
+            background: var(--bg-card);
+            padding: 30px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+
+        .value-card h3 { margin-bottom: 10px; font-size: 1.2rem; }
+        .value-card p { color: var(--text-muted); font-size: 0.95rem; }
+        .icon-box {
+            width: 48px;
+            height: 48px;
+            background: rgba(99, 102, 241, 0.1);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            color: var(--primary);
+        }
+
+        /* Features Detail */
+        .features-section {
+            background: #0f131f;
+        }
+
+        .feature-row {
+            display: flex;
+            align-items: center;
+            gap: 60px;
+            margin-bottom: 80px;
+        }
+
+        .feature-row.reverse { flex-direction: row-reverse; }
+
+        .feature-content { flex: 1; }
+        .feature-content h2 { font-size: 2rem; margin-bottom: 16px; }
+        .feature-content p { color: var(--text-muted); font-size: 1.1rem; margin-bottom: 24px; }
+        .feature-list li {
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text-main);
+        }
+        .check { color: var(--accent); }
+
+        .feature-visual {
+            flex: 1;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            min-height: 300px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+        }
+
+        .mock-ui {
+            width: 100%;
+            background: #0B0F19;
+            border-radius: 8px;
+            padding: 15px;
+            font-family: monospace;
+            font-size: 0.85rem;
+            color: var(--accent);
+            border: 1px solid var(--border);
+        }
+
+        /* CTA Section */
+        .cta-section {
+            background: linear-gradient(180deg, var(--bg-dark) 0%, #1e1b4b 100%);
+            text-align: center;
+        }
+        .cta-box {
+            background: rgba(255,255,255,0.05);
+            padding: 60px;
+            border-radius: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        /* Footer */
+        footer {
+            padding: 40px 0;
+            border-top: 1px solid var(--border);
+            text-align: center;
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 2.5rem; }
+            .value-grid { grid-template-columns: 1fr; }
+            .feature-row, .feature-row.reverse { flex-direction: column; text-align: left; }
+            .signup-form { flex-direction: column; }
+            .btn-primary { width: 100%; }
+            .logos { gap: 20px; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="container">
+            <nav>
+                <div class="logo">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                    Dev<span>Claw</span>
+                </div>
+                <a href="#" class="nav-btn">Login</a>
+            </nav>
+        </div>
+    </header>
+
+    <section class="hero text-center">
+        <div class="container">
+            <h1>Turn Telegram Chats into<br>Production Code</h1>
+            <p>Describe bugs and features in plain English. Our AI agents create the architecture, write the code, and open a reviewed PR—ready for your approval.</p>
+            
+            <form class="signup-form" action="/api/signup" method="POST">
+                <input type="email" name="email" placeholder="Enter your work email" required>
+                <button type="submit" class="btn-primary">Get Early Access</button>
+            </form>
+            <p style="font-size: 0.8rem; margin-top: 15px; opacity: 0.6;">No credit card required. Free for solo founders.</p>
+        </div>
+    </section>
+
+    <section class="social-proof">
+        <div class="container">
+            <p class="text-center" style="margin-bottom: 20px; font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px;">Trusted by innovative dev teams</p>
+            <div class="logos">
+                <span class="logo-placeholder">NEXUS LABS</span>
+                <span class="logo-placeholder">FOUNDERFLOW</span>
+                <span class="logo-placeholder">SHIPFAST</span>
+                <span class="logo-placeholder">CODESHOP</span>
+            </div>
+        </div>
+    </section>
+
+    <section class="section">
+        <div class="container">
+            <div class="text-center">
+                <h2 style="font-size: 2.5rem; margin-bottom: 20px;">Why CTOs love DevClaw</h2>
+                <p style="color: var(--text-muted); max-width: 600px; margin: 0 auto;">Stop context switching. Let your team focus on complex logic while AI handles the boilerplate and bug fixes.</p>
+            </div>
+
+            <div class="value-grid">
+                <div class="value-card">
+                    <div class="icon-box">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                    </div>
+                    <h3>10x Faster Delivery</h3>
+                    <p>Skip the Jira tickets and lengthy spec docs. A single message in Telegram triggers the entire development lifecycle.</p>
+                </div>
+                <div class="value-card">
+                    <div class="icon-box">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path></svg>
+                    </div>
+                    <h3>Built-in Quality Control</h3>
+                    <p>Every PR is reviewed by a dedicated AI Reviewer agent before it ever hits your GitHub repository.</p>
+                </div>
+                <div class="value-card">
+                    <div class="icon-box">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
+                    </div>
+                    <h3>Human-in-the-Loop</h3>
+                    <p>You stay in control. The AI proposes the solution, but you hold the final "Merge" button.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="section features-section">
+        <div class="container">
+            <!-- Feature 1 -->
+            <div class="feature-row">
+                <div class="feature-content">
+                    <h2>Chat to Deploy</h2>
+                    <p>Integrate directly with your team's Telegram. Just tag the DevClaw bot with a feature request or bug report.</p>
+                    <ul class="feature-list">
+                        <li><span class="check">✓</span> Natural language parsing</li>
+                        <li><span class="check">✓</span> Automatic GitHub Issue creation</li>
+                        <li><span class="check">✓</span> Architecture plan generation</li>
+                    </ul>
+                </div>
+                <div class="feature-visual">
+                    <div style="width: 100%; max-width: 300px;">
+                        <div style="background: #2AABEE; padding: 10px; border-radius: 8px 8px 0 0; color: white; font-weight: bold; font-size: 0.8rem;">Telegram</div>
+                        <div style="background: white; padding: 15px; border-radius: 0 0 8px 8px; color: black;">
+                            <p style="margin-bottom: 10px; font-size: 0.9rem;"><strong>You:</strong> @DevClaw Fix the login bug on mobile safari.</p>
+                            <p style="margin-bottom: 10px; font-size: 0.9rem;"><strong>DevClaw:</strong> Creating issue #402 and generating architecture plan...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Feature 2 -->
+            <div class="feature-row reverse">
+                <div class="feature-content">
+                    <h2>AI Generator & Reviewer</h2>
+                    <p>Watch as two specialized agents collaborate. One writes the code, the other audits it for security and style.</p>
+                    <ul class="feature-list">
+                        <li><span class="check">✓</span> Context-aware code generation</li>
+                        <li><span class="check">✓</span> Automated unit tests</li>
+                        <li><span class="check">✓</span> Self-correcting code review</li>
+                    </ul>
+                </div>
+                <div class="feature-visual">
+                    <div class="mock-ui">
+                        <p style="color: #f8fafc; margin-bottom: 5px;">> Analyzing repository structure...</p>
+                        <p style="color: #f8fafc; margin-bottom: 5px;">> Generator Agent: Writing auth middleware...</p>
+                        <p style="color: #f8fafc; margin-bottom: 5px;">> Reviewer Agent: 3 files changed, 0 vulnerabilities found.</p>
+                        <p style="color: var(--accent); margin-bottom: 5px;">> PR Ready for merge.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="section cta-section">
+        <div class="container">
+            <div class="cta-box">
+                <h2 style="font-size: 2.5rem; margin-bottom: 20px;">Ready to automate your backlog?</h2>
+                <p style="color: var(--text-muted); margin-bottom: 30px; font-size: 1.1rem;">Join the waitlist today and get 3 months free when we launch.</p>
+                <form class="signup-form" action="/api/signup" method="POST" style="margin: 0 auto;">
+                    <input type="email" name="email" placeholder="Enter your email" required>
+                    <button type="submit" class="btn-primary">Join Waitlist</button>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <div class="container">
+            <p>&copy; 2023 DevClaw Inc. All rights reserved.</p>
+        </div>
+    </footer>
+
+</body>
+</html>
