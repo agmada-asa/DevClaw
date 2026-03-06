@@ -50,7 +50,11 @@ const ZAI_REVIEWER_MODEL = process.env.REVIEWER_MODEL    || 'glm-4.7-flash';
 // thudm/glm-z1-32b has "no endpoints" on OpenRouter — use z-ai/glm-4.7 (203k ctx) instead
 const OR_REASONING_MODEL = process.env.OR_REASONING_MODEL || 'z-ai/glm-4.7';
 const OR_LONGCTX_MODEL   = process.env.OR_LONGCTX_MODEL   || 'z-ai/glm-4.7';
-const OR_FLASH_FALLBACK  = process.env.OR_FLASH_MODEL     || 'z-ai/glm-4.5-air';
+// Backward-compat: README/.env.example use ZAI_OPENROUTER_MODEL.
+const OR_FLASH_FALLBACK  =
+  process.env.OR_FLASH_MODEL ||
+  process.env.ZAI_OPENROUTER_MODEL ||
+  'z-ai/glm-4.7-flash';
 
 const GENERATOR_POLICY: RolePolicy = {
   timeoutMs: 1200_000,

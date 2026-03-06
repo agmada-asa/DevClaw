@@ -252,9 +252,6 @@ const runGatewayAgentPrompt = async (prompt: string): Promise<string> => {
     if (process.env.OPENCLAW_GATEWAY_URL) {
         args.push('--url', process.env.OPENCLAW_GATEWAY_URL);
     }
-    if (process.env.OPENCLAW_GATEWAY_TOKEN) {
-        args.push('--token', process.env.OPENCLAW_GATEWAY_TOKEN);
-    }
 
     try {
         const { stdout, stderr } = await execFileAsync(cliBin, args, {

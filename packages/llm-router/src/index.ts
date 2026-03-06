@@ -35,6 +35,23 @@ const describeError = (err: unknown): string => {
   return err instanceof Error ? err.message : String(err);
 };
 
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+const computeRetryDelayMs = (err: unknown, attempt: number): number => {
+  if (process.env.NODE_ENV === 'test') {
+    return 0;
+  }
+  const jitterMs = Math.floor(Math.random() * 250);
+  if (err instanceof ProviderHttpError && err.statusCode === 429) {
+    return Math.min(15_000, 1_500 * (2 ** (attempt - 1))) + jitterMs;
+  }
+  if (err instanceof ProviderHttpError && err.statusCode >= 500) {
+    return Math.min(10_000, 1_000 * (2 ** (attempt - 1))) + jitterMs;
+  }
+  return Math.min(8_000, 750 * (2 ** (attempt - 1))) + jitterMs;
+};
+
 // Returns true if this error is in the role's fallbackOn list, meaning it is
 // safe to retry or fall back. Permanent errors like 401/403 are never in the
 // list so they surface immediately without wasting a fallback attempt.
@@ -132,6 +149,7 @@ export async function chat(req: ChatRequest): Promise<ChatResponse> {
   const maxAttempts = 1 + maxRetries;
   let lastErr: unknown;
   let attemptsMade = 0;
+  let lastProvider: Provider = config.provider;
 
   // Retry loop — keeps trying the primary provider while:
   //   (a) the error is listed in fallbackOn (i.e. transient, worth retrying), and
@@ -145,24 +163,47 @@ export async function chat(req: ChatRequest): Promise<ChatResponse> {
       lastErr = err;
       const retryable = shouldFallback(err, fallbackOn);
       if (!retryable || attempt === maxAttempts) break;
+      const delayMs = computeRetryDelayMs(err, attempt);
       console.warn(
         `[llm-router] Attempt ${attempt}/${maxAttempts} failed for role "${req.role}" on ` +
-        `"${config.provider}" — retrying. Reason: ${describeError(err)}`,
+        `"${config.provider}" — retrying in ${delayMs}ms. Reason: ${describeError(err)}`,
       );
+      await sleep(delayMs);
     }
   }
 
-  // After exhausting retries, try the fallback provider if configured and eligible.
+  // After exhausting retries, try fallback provider with the same retry budget.
   if (config.fallback && shouldFallback(lastErr, fallbackOn)) {
     console.warn(
       `[llm-router] Primary "${config.provider}" exhausted for role "${req.role}" — ` +
       `falling back to "${config.fallback.provider}". Reason: ${describeError(lastErr)}`,
     );
-    return await callProvider(config.fallback.provider, config.fallback.modelId, req, timeoutMs);
+    lastProvider = config.fallback.provider;
+    const fallbackMaxAttempts = maxAttempts;
+    let fallbackAttemptsMade = 0;
+
+    for (let attempt = 1; attempt <= fallbackMaxAttempts; attempt++) {
+      fallbackAttemptsMade = attempt;
+      try {
+        return await callProvider(config.fallback.provider, config.fallback.modelId, req, timeoutMs);
+      } catch (err) {
+        lastErr = err;
+        const retryable = shouldFallback(err, fallbackOn);
+        if (!retryable || attempt === fallbackMaxAttempts) break;
+        const delayMs = computeRetryDelayMs(err, attempt);
+        console.warn(
+          `[llm-router] Fallback attempt ${attempt}/${fallbackMaxAttempts} failed for role ` +
+          `"${req.role}" on "${config.fallback.provider}" — retrying in ${delayMs}ms. ` +
+          `Reason: ${describeError(err)}`,
+        );
+        await sleep(delayMs);
+      }
+    }
+    attemptsMade += fallbackAttemptsMade;
   }
 
   console.error(
-    `[llm-router] Request failed for role "${req.role}" on provider "${config.provider}" after ` +
+    `[llm-router] Request failed for role "${req.role}" on provider "${lastProvider}" after ` +
     `${attemptsMade} attempt(s). Error: ${describeError(lastErr)}`,
   );
   throw lastErr;

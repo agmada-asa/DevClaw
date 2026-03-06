@@ -42,7 +42,11 @@ function makeAxiosTimeoutError(code: 'ECONNABORTED' | 'ERR_CANCELED' = 'ECONNABO
 }
 
 beforeEach(() => {
-  jest.clearAllMocks();
+  mockPost.mockReset();
+  (axios.isAxiosError as unknown as jest.Mock).mockReset();
+  (axios.isAxiosError as unknown as jest.Mock).mockImplementation(
+    (err: unknown) => (err as any)?.isAxiosError === true,
+  );
   process.env.ZAI_API_KEY = 'test-zai-key';
   process.env.OPENROUTER_API_KEY = 'test-openrouter-key';
   process.env.VENICE_API_KEY = 'test-venice-key';
@@ -141,19 +145,21 @@ describe('typed errors', () => {
     expect(mockPost).toHaveBeenCalledTimes(1);
   });
 
-  it('throws ProviderTimeoutError after exhausting all Z.AI retries and OpenRouter fallback', async () => {
-    // backend_generator: maxRetries=2 (3 primary attempts) + 1 fallback = 4 calls total.
+  it('throws ProviderTimeoutError after exhausting all Z.AI retries and OpenRouter fallback retries', async () => {
+    // backend_generator: maxRetries=2 (3 primary attempts) + 3 fallback attempts = 6 calls total.
     mockPost
       .mockRejectedValueOnce(makeAxiosTimeoutError()) // Z.AI attempt 1
       .mockRejectedValueOnce(makeAxiosTimeoutError()) // Z.AI attempt 2
       .mockRejectedValueOnce(makeAxiosTimeoutError()) // Z.AI attempt 3
-      .mockRejectedValueOnce(makeAxiosTimeoutError()); // OpenRouter fallback
+      .mockRejectedValueOnce(makeAxiosTimeoutError()) // OpenRouter fallback attempt 1
+      .mockRejectedValueOnce(makeAxiosTimeoutError()) // OpenRouter fallback attempt 2
+      .mockRejectedValueOnce(makeAxiosTimeoutError()); // OpenRouter fallback attempt 3
     const err = await chat({ role: 'backend_generator', messages: [{ role: 'user', content: 'Generate' }], requestId: 'req-timeout-1' }).catch(e => e);
     expect(err).toBeInstanceOf(ProviderTimeoutError);
     expect(err).toBeInstanceOf(RouterError);
     expect(err.role).toBe('backend_generator');
     expect(err.requestId).toBe('req-timeout-1');
-    expect(mockPost).toHaveBeenCalledTimes(4);
+    expect(mockPost).toHaveBeenCalledTimes(6);
   });
 });
 
@@ -176,6 +182,18 @@ describe('retry and fallback policy', () => {
       .mockResolvedValueOnce(MOCK_SUCCESS);
     const result = await chat({ role: 'frontend_generator', messages: [{ role: 'user', content: 'Generate patch' }] });
     expect(mockPost).toHaveBeenCalledTimes(4);
+    expect(result.provider).toBe('openrouter');
+  });
+
+  it('retries OpenRouter fallback on transient timeout and succeeds', async () => {
+    mockPost
+      .mockRejectedValueOnce(makeAxiosHttpError(429))
+      .mockRejectedValueOnce(makeAxiosHttpError(429))
+      .mockRejectedValueOnce(makeAxiosHttpError(429))
+      .mockRejectedValueOnce(makeAxiosTimeoutError())
+      .mockResolvedValueOnce(MOCK_SUCCESS);
+    const result = await chat({ role: 'frontend_generator', messages: [{ role: 'user', content: 'Generate patch' }] });
+    expect(mockPost).toHaveBeenCalledTimes(5);
     expect(result.provider).toBe('openrouter');
   });
 
