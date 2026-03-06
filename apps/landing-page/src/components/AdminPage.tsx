@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 
 const API_BASE = 'http://localhost:3050';
 const ADMIN_PASSWORD = 'devclaw2024';
@@ -55,7 +55,7 @@ function StatusBadge({ status }: { status: Campaign['status'] }) {
 
 // ─── Stat card ─────────────────────────────────────────────────────────────────
 
-function StatCard({ label, value, icon, color = 'red' }: { label: string; value: number | string; icon: React.ReactNode; color?: string }) {
+function StatCard({ label, value, icon, color = 'red' }: { label: string; value: number | string; icon: ReactNode; color?: string }) {
   const colorMap: Record<string, string> = {
     red:    'from-red-500/20   border-red-500/20',
     green:  'from-green-500/20 border-green-500/20',
@@ -279,6 +279,126 @@ function CreateCampaignForm({ onCreate }: { onCreate: () => void }) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Quick Test Send panel ─────────────────────────────────────────────────────
+
+function TestSendPanel() {
+  const [profileUrl, setProfileUrl] = useState('https://www.linkedin.com/in/mideyy7/');
+  const [firstName, setFirstName]   = useState('Ayomide');
+  const [lastName, setLastName]     = useState('Ojediran');
+  const [degree, setDegree]         = useState<'1st' | '2nd'>('1st');
+  const [message, setMessage]       = useState(
+    "Hey — testing DevClaw's automated outreach. We turn Telegram messages into reviewed GitHub PRs in under 5 min. Check us out at https://dev-claw-landing-page-one.vercel.app/ 🚀"
+  );
+  const [status, setStatus]   = useState<'idle' | 'sending' | 'success' | 'error'>('idle');
+  const [result, setResult]   = useState('');
+  const [open, setOpen]       = useState(false);
+
+  const send = async () => {
+    setStatus('sending'); setResult('');
+    try {
+      const r = await fetch(`${API_BASE}/api/test-send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profileUrl, firstName, lastName, message, connectionDegree: degree }),
+      });
+      const d = await r.json();
+      if (d.success) { setStatus('success'); setResult(`Sent via ${d.method}`); }
+      else           { setStatus('error');   setResult(d.error || 'Send failed'); }
+    } catch (e: any) { setStatus('error'); setResult(e.message); }
+  };
+
+  return (
+    <div className="rounded-2xl border border-white/5 bg-white/[0.02] overflow-hidden mb-8">
+      {/* Header toggle */}
+      <button
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-white/[0.02] transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-7 h-7 rounded-lg bg-red-brand/10 border border-red-brand/20 flex items-center justify-center">
+            <svg className="w-3.5 h-3.5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+            </svg>
+          </div>
+          <div>
+            <p className="text-white text-sm font-semibold">Quick Test Send</p>
+            <p className="text-white/30 text-xs">Send directly to any LinkedIn profile — bypasses discovery</p>
+          </div>
+        </div>
+        <svg className={`w-4 h-4 text-white/30 transition-transform ${open ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="border-t border-white/5 px-5 pb-5 pt-4 flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="col-span-2">
+              <label className="text-white/40 text-xs uppercase tracking-wider font-medium block mb-1.5">LinkedIn Profile URL</label>
+              <input
+                value={profileUrl}
+                onChange={e => setProfileUrl(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm placeholder-white/20 focus:outline-none focus:border-red-brand transition-colors font-mono"
+              />
+            </div>
+            <div>
+              <label className="text-white/40 text-xs uppercase tracking-wider font-medium block mb-1.5">First Name</label>
+              <input value={firstName} onChange={e => setFirstName(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-red-brand transition-colors" />
+            </div>
+            <div>
+              <label className="text-white/40 text-xs uppercase tracking-wider font-medium block mb-1.5">Last Name</label>
+              <input value={lastName} onChange={e => setLastName(e.target.value)}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-red-brand transition-colors" />
+            </div>
+            <div>
+              <label className="text-white/40 text-xs uppercase tracking-wider font-medium block mb-1.5">Connection Degree</label>
+              <select value={degree} onChange={e => setDegree(e.target.value as '1st' | '2nd')}
+                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm focus:outline-none focus:border-red-brand transition-colors">
+                <option value="1st">1st — Direct message</option>
+                <option value="2nd">2nd — Connection request</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-white/40 text-xs uppercase tracking-wider font-medium block mb-1.5">
+              Message <span className="text-white/20 normal-case">({message.length}/300 chars)</span>
+            </label>
+            <textarea
+              value={message}
+              onChange={e => setMessage(e.target.value.slice(0, 300))}
+              rows={3}
+              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-white text-sm placeholder-white/20 focus:outline-none focus:border-red-brand transition-colors resize-none"
+            />
+          </div>
+
+          <div className="flex items-center gap-4">
+            <button
+              onClick={send}
+              disabled={status === 'sending'}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-red-brand text-white text-sm font-semibold hover:bg-red-700 disabled:opacity-50 transition-colors"
+              style={{ boxShadow: '0 0 16px rgba(232,25,44,0.3)' }}
+            >
+              {status === 'sending' ? (
+                <><div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> Sending...</>
+              ) : (
+                <><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg> Send Message</>
+              )}
+            </button>
+
+            {result && (
+              <span className={`text-sm ${status === 'success' ? 'text-green-400' : 'text-red-400'}`}>
+                {status === 'success' ? '✓' : '✗'} {result}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -508,6 +628,9 @@ export default function AdminPage({ onBack }: Props) {
             icon={<svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
           />
         </div>
+
+        {/* Quick Test Send */}
+        {serviceOnline && <TestSendPanel />}
 
         {/* Campaigns section */}
         <div className="flex items-center justify-between mb-4">

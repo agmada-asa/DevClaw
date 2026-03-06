@@ -71,7 +71,7 @@ export default function Features() {
         {/* Highlight stat bar */}
         <div className="mt-20 bg-red-brand rounded-2xl p-8 lg:p-12 grid sm:grid-cols-3 gap-8 text-white text-center">
           {[
-            { value: '£29', label: 'per month', note: 'full AI dev team' },
+            { value: 'Custom', label: 'pricing plan', note: 'tailored setup' },
             { value: '0', label: 'lines of code logged', note: 'privacy-first inference' },
             { value: '2×', label: 'AI review on every PR', note: 'generator + reviewer' },
           ].map((stat, i) => (
