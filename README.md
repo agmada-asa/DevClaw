@@ -2,19 +2,54 @@
 
 An AI-powered developer productivity platform that automates the full GitHub PR workflow — and markets itself with CEOClaw, its autonomous founder agent.
 
+Both agents run entirely on **Z.AI's GLM model family**. No other AI provider is used for core intelligence.
+
+---
+
+## Powered by Z.AI GLM
+
+DevClaw uses Z.AI's GLM series as its sole AI engine, with different GLM variants selected per role based on cognitive demand:
+
+| Agent Role | GLM Model | Why this model |
+|---|---|---|
+| Architecture Planner | `glm-4-long` | 128k context — reasons over entire codebases |
+| Orchestrator | `glm-z1-flash` | Chain-of-thought reasoning for workflow decisions |
+| Code Generator | `glm-4.7-flash` | Fast, high-quality code generation |
+| Code Reviewer | `glm-4.7-flash` | Rapid patch review and quality checks |
+| Prospect Qualifier (CEOClaw) | `glm-z1-flash` | Nuanced company fit scoring via reasoning |
+| Outreach Writer (CEOClaw) | `glm-4.7-flash` | Personalized LinkedIn message generation |
+| Frontend/Backend Agents | `glm-4.7-flash` | Specialized code generation per stack layer |
+
+All Z.AI calls go through a typed LLM router (`packages/llm-router/`) that handles streaming, retries, and fallback routing to the same GLM models via OpenRouter if the Z.AI direct API is unavailable — ensuring the AI brain never changes, only the path to it.
+
 ---
 
 ## What It Does
 
-DevClaw turns a plain-language task description into a merged GitHub PR with no manual coding required:
+DevClaw is two products sharing one GLM backbone:
+
+### DevClaw — Autonomous PR Agent
+Turns a plain-language task description into a merged GitHub PR with no manual coding:
 
 1. **Describe** — Developer sends a message to the Telegram or WhatsApp bot (e.g. "fix the login bug" or "add dark mode")
 2. **Issue** — DevClaw creates a GitHub issue automatically
-3. **Plan** — AI generates a full architecture plan (files to change, approach, risk flags)
+3. **Plan** — `glm-4-long` generates a full architecture plan (files to change, approach, risk flags) with full codebase context
 4. **Approve** — Human reviews and approves the plan via Telegram
-5. **Generate** — AI Generator agent writes the code changes
-6. **Review** — AI Reviewer agent checks the code for correctness and quality
+5. **Generate** — `glm-4.7-flash` Generator agent writes the code changes
+6. **Review** — `glm-4.7-flash` Reviewer agent checks for correctness and quality
 7. **PR** — A GitHub pull request is opened, ready to merge
+
+### CEOClaw — Autonomous Founder Agent
+CEOClaw is a self-running business agent that markets and sells DevClaw without human input. It runs a continuous loop across four domains, all orchestrated by `glm-z1-flash`:
+
+- **Product** — Generates product ideas and builds landing page variants
+- **Marketing** — Writes SEO blog posts targeting startup CTOs and indie hackers; plans outreach campaigns with message angles and follow-up sequences
+- **Sales** — `glm-z1-flash` qualifies LinkedIn prospects by reasoning over company profiles; `glm-4.7-flash` writes personalised connection messages; Playwright sends outreach up to a daily limit
+- **Operations** — Analyses business metrics, processes user feedback, and plans the next iteration
+
+CEOClaw wakes up on a configurable interval, asks GLM what to do next, executes that task, records the result in Supabase, and goes back to sleep. Goal: reach $100 MRR autonomously.
+
+All CEOClaw outreach links back to the DevClaw landing page, which funnels signups into the Telegram bot.
 
 ---
 
@@ -23,27 +58,22 @@ DevClaw turns a plain-language task description into a merged GitHub PR with no 
 ### DevClaw (Developer Tool)
 - Telegram and WhatsApp bot interface — no app installs for end users
 - GitHub issue auto-creation from natural language
-- AI architecture planning with risk flags and file-level blueprints
+- GLM-powered architecture planning with risk flags and file-level blueprints
 - Human approval gate before any code is written
-- Generator + Reviewer agent pair for code quality
+- Generator + Reviewer agent pair powered by GLM-4.7-Flash
 - Automatic GitHub PR creation with summary and walkthrough
-- Multi-provider LLM routing (Venice, Z.AI, OpenRouter) with automatic fallback
+- Z.AI GLM as primary AI provider; OpenRouter GLM fallback for resilience
 - Redis-backed session memory across conversations
 - Supabase persistence for plans, runs, and audit history
-- Private inference via Venice.ai — zero code logging
 - Dashboard UI for judges/demo — shows agent activity, PR status, MRR
 
 ### CEOClaw (Autonomous Founder Agent)
-CEOClaw is a self-running business agent that markets and sells DevClaw without human input. It runs a continuous loop across four domains:
-
-- **Product** — Generates product ideas and builds landing page variants
-- **Marketing** — Writes SEO blog posts targeting startup CTOs and indie hackers; plans outreach campaigns with message angles and follow-up sequences
-- **Sales** — Discovers and qualifies LinkedIn prospects via Playwright browser automation; generates personalised connection messages; sends outreach up to a daily limit
-- **Operations** — Analyses business metrics, processes user feedback, and plans the next iteration
-
-CEOClaw wakes up on a configurable interval, asks the AI what to do next, executes that task, records the result in Supabase, and goes back to sleep. Goal: reach $100 MRR autonomously.
-
-All CEOClaw outreach links back to the DevClaw landing page, which funnels signups into the Telegram bot.
+- Fully autonomous business loop — product, marketing, sales, operations
+- GLM-Z1-Flash reasoning for strategic task routing and prospect qualification
+- GLM-4.7-Flash for content generation and personalized outreach copy
+- LinkedIn browser automation via Playwright for prospect discovery and messaging
+- Configurable daily limits, fit scoring thresholds, and campaign management
+- Full REST API for monitoring and demo triggers
 
 ---
 
@@ -57,10 +87,10 @@ All CEOClaw outreach links back to the DevClaw landing page, which funnels signu
 │   └── telegram-bot/             # Bot command handlers and chat UX
 ├── services/
 │   ├── openclaw-gateway/         # Interface adapter and session routing
-│   ├── orchestrator/             # Main workflow state machine and policy checks
-│   ├── architecture-planner/     # AI-backed plan builder and risk flags
+│   ├── orchestrator/             # GLM-Z1-Flash workflow state machine and policy checks
+│   ├── architecture-planner/     # GLM-4-Long plan builder — full codebase context
 │   ├── openclaw-engine/          # OpenClaw planning engine (plan create/update)
-│   ├── agent-runner/             # Generator/Reviewer pair orchestration
+│   ├── agent-runner/             # GLM-4.7-Flash Generator/Reviewer pair orchestration
 │   ├── integration-verifier/     # Cross-service test and validation runner
 │   ├── report-generator/         # PR summary, changelog, walkthrough output
 │   ├── ceoclaw-founder/          # Autonomous founder loop: sales, marketing, product, ops
@@ -68,7 +98,10 @@ All CEOClaw outreach links back to the DevClaw landing page, which funnels signu
 ├── packages/
 │   ├── contracts/                # Shared schemas and typed message contracts
 │   ├── agent-runtime/            # Agent lifecycle, retries, tool execution policies
-│   ├── llm-router/               # Venice + Z.AI provider routing with fallback
+│   ├── llm-router/               # Z.AI GLM routing with per-role model selection + fallback
+│   │                             #   glm-z1-flash  → orchestrator, prospect_qualifier
+│   │                             #   glm-4-long    → planner
+│   │                             #   glm-4.7-flash → generator, reviewer, outreach_writer
 │   ├── memory/                   # Session memory abstraction (Redis + encrypted store)
 │   ├── github-client/            # GitHub issue, branch, PR orchestration
 │   ├── observability/            # Trace helpers and SDK wrappers
@@ -149,6 +182,19 @@ POST /api/campaign/:id/resume       Resume sending on a paused campaign
 POST /api/campaign/:id/pause        Pause a running campaign
 GET  /api/campaign/:id/prospects    List prospects and status counts for a campaign
 ```
+
+### Z.AI GLM env vars (required for all AI features)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ZAI_API_KEY` | — | Z.AI API key — obtain at open.bigmodel.cn |
+| `ZAI_BASE_URL` | `https://open.bigmodel.cn/api/paas/v4` | Z.AI API base URL |
+| `REASONING_MODEL` | `glm-z1-flash` | GLM model for reasoning roles (orchestrator, qualifier) |
+| `GENERATOR_MODEL` | `glm-4.7-flash` | GLM model for code/content generation roles |
+| `REVIEWER_MODEL` | `glm-4.7-flash` | GLM model for code review roles |
+| `LONGCTX_MODEL` | `glm-4-long` | GLM model for long-context planning (128k) |
+| `ZAI_OPENROUTER_MODEL` | `z-ai/glm-4.7-flash` | Fallback: GLM via OpenRouter if Z.AI direct is down |
+| `ZAI_OPENROUTER_REASONING_MODEL` | `z-ai/glm-z1-flash` | Fallback: GLM reasoning via OpenRouter |
 
 ### CEOClaw env vars
 
@@ -272,6 +318,7 @@ create table if not exists ceoclaw_prospects (
 
 ### Prerequisites
 - Node.js 22+
+- Z.AI API key (`ZAI_API_KEY`) — get one at [open.bigmodel.cn](https://open.bigmodel.cn)
 - Redis (for session memory)
 - Supabase project (for persistence)
 - Telegram bot token
