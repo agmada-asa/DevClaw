@@ -32,6 +32,8 @@ export default {
         'float':      'float 6s ease-in-out infinite',
         'grain':      'grain 0.8s steps(1) infinite',
         'glow-pulse': 'glowPulse 4s ease-in-out infinite',
+        'twinkle':    'twinkle 3s ease-in-out infinite',
+        'scan':       'scan 8s linear infinite',
       },
       keyframes: {
         fadeUp: {
@@ -61,7 +63,17 @@ export default {
         },
         glowPulse: {
           '0%, 100%': { opacity: '0.12' },
-          '50%':      { opacity: '0.22' },
+          '50%':      { opacity: '0.25' },
+        },
+        twinkle: {
+          '0%, 100%': { opacity: '0', transform: 'scale(0.8)' },
+          '50%':      { opacity: '0.7', transform: 'scale(1.2)' },
+        },
+        scan: {
+          '0%':   { transform: 'translateY(-10px)', opacity: '0' },
+          '5%':   { opacity: '1' },
+          '90%':  { opacity: '0.6' },
+          '100%': { transform: 'translateY(100vh)', opacity: '0' },
         },
       },
     },

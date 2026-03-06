@@ -44,6 +44,7 @@ function shouldFallback(err: unknown, triggers: FallbackTrigger[]): boolean {
   if (err instanceof ProviderHttpError) {
     if (triggers.includes('http5xx') && err.statusCode >= 500) return true;
     if (triggers.includes('http429') && err.statusCode === 429) return true;
+    if (triggers.includes('http4xx') && err.statusCode >= 400 && err.statusCode < 500) return true;
   }
   return false;
 }

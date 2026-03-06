@@ -107,7 +107,6 @@ export const handleMessage = async (message: any) => {
     }
 
     const tLower = text.toLowerCase();
-    const chatKey = message.from.includes('@') ? message.from : `${message.from}@c.us`;
 
     const isTaskRequest = tLower.startsWith('/task ') || tLower === '/task' ||
         tLower.startsWith('/request ') || tLower === '/request';

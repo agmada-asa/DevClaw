@@ -32,8 +32,8 @@ export default function Pricing() {
               <div className="flex items-end justify-between">
                 <div>
                   <p className="text-red-100 text-sm font-semibold uppercase tracking-widest">DevClaw Pro</p>
-                  <p className="mt-1 text-white text-6xl font-black">£29</p>
-                  <p className="text-red-100 text-sm mt-1">per month · cancel anytime</p>
+                  <p className="mt-1 text-white text-4xl font-black">Contact Us</p>
+                  <p className="text-red-100 text-sm mt-1">for custom pricing</p>
                 </div>
                 <div className="bg-white/20 rounded-2xl px-4 py-2 text-white text-sm font-bold">
                   Early Bird
@@ -77,7 +77,7 @@ export default function Pricing() {
                 { label: 'Junior engineer', cost: '£50k+/yr', note: '3-month onboard' },
                 { label: 'Second agency', cost: '£10k/project', note: 'Delivers late' },
                 { label: 'Devin', cost: '$500/mo', note: 'Logs your code' },
-                { label: 'DevClaw', cost: '£29/mo', highlight: true, note: 'Private, reviewed, documented' },
+                { label: 'DevClaw', cost: 'Custom', highlight: true, note: 'Private, reviewed, documented' },
               ].map((c, i) => (
                 <div
                   key={i}

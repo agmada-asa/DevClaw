@@ -37,6 +37,7 @@ export type TaskType =
     | 'marketing.plan_campaign'
     | 'sales.find_prospects'
     | 'sales.send_outreach'
+    | 'sales.follow_up'
     | 'operations.analyze_metrics'
     | 'operations.process_feedback'
     | 'operations.plan_iteration';
@@ -133,6 +134,11 @@ export interface SalesOutreachOutput {
     campaignId: string;
 }
 
+export interface SalesFollowUpOutput {
+    acceptedConnections: number;  // Number of newly accepted connection requests found
+    followUpsSent: number;        // Number of follow-up direct messages sent
+}
+
 export type TaskOutput =
     | ProductIdeaOutput
     | LandingPageOutput
@@ -141,6 +147,7 @@ export type TaskOutput =
     | MetricsAnalysisOutput
     | FeedbackResponseOutput
     | IterationPlanOutput
+    | SalesFollowUpOutput
     | SalesProspectOutput
     | SalesOutreachOutput;
 

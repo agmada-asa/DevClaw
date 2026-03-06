@@ -188,8 +188,6 @@ app.post('/api/campaign/:id/pause', async (req: Request, res: Response): Promise
 });
 
 app.get('/api/campaign/:id/prospects', async (req: Request, res: Response): Promise<any> => {
-    const campaign = await getCampaign(req.params.id);
-    if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
     const prospects = await getProspectsByCampaign(req.params.id);
     const summary = {
         total: prospects.length,
@@ -202,6 +200,30 @@ app.get('/api/campaign/:id/prospects', async (req: Request, res: Response): Prom
         replied: prospects.filter((p) => p.status === 'replied').length,
     };
     return res.status(200).json({ success: true, summary, prospects });
+});
+
+// ─── Test Send (direct — bypasses discovery / qualification) ──────────────────
+
+app.post('/api/test-send', async (req: Request, res: Response): Promise<any> => {
+    const { profileUrl, firstName, lastName, message, connectionDegree } = req.body || {};
+    if (!profileUrl || !message) {
+        return res.status(400).json({ error: 'Missing required fields: profileUrl, message' });
+    }
+    const { sendOutreachBatch } = await import('./linkedinMessenger');
+    try {
+        const results = await sendOutreachBatch([{
+            prospectId: `test-${Date.now()}`,
+            profileUrl: String(profileUrl),
+            message: String(message),
+            firstName: String(firstName || 'there'),
+            lastName: String(lastName || ''),
+            connectionDegree: connectionDegree === '1st' ? '1st' : '2nd',
+        }]);
+        const r = results[0];
+        return res.status(200).json({ success: r.sent, method: r.method, error: r.error ?? null });
+    } catch (err: any) {
+        return res.status(500).json({ error: err.message });
+    }
 });
 
 // ─── Server Boot ──────────────────────────────────────────────────────────────

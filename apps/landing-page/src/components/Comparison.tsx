@@ -1,14 +1,14 @@
 const ROWS = [
   { feature: 'True multi-agent specialisation', devin: false, swe: false, dc: true },
-  { feature: 'Adversarial pair code review',    devin: false, swe: false, dc: true },
-  { feature: 'Privacy — no code logging',        devin: false, swe: false, dc: true },
-  { feature: 'Open-source model stack',          devin: false, swe: 'partial', dc: true },
-  { feature: 'Human approval gate',              devin: 'partial', swe: false, dc: true },
+  { feature: 'Adversarial pair code review', devin: false, swe: false, dc: true },
+  { feature: 'Privacy — no code logging', devin: false, swe: false, dc: true },
+  { feature: 'Open-source model stack', devin: false, swe: 'partial', dc: true },
+  { feature: 'Human approval gate', devin: 'partial', swe: false, dc: true },
   { feature: 'Auto-documentation (TSDoc + CHANGELOG)', devin: false, swe: false, dc: true },
   { feature: 'Persistent cross-session memory', devin: 'partial', swe: false, dc: true },
-  { feature: 'Works via Telegram / WhatsApp',    devin: false, swe: false, dc: true },
-  { feature: 'Self-marketing revenue loop',      devin: false, swe: false, dc: true },
-  { feature: 'Price',                            devin: '$500/mo', swe: 'CLI only', dc: '£29/mo' },
+  { feature: 'Works via Telegram / WhatsApp', devin: false, swe: false, dc: true },
+  { feature: 'Self-marketing revenue loop', devin: false, swe: false, dc: true },
+  { feature: 'Price', devin: '$500/mo', swe: 'CLI only', dc: 'Custom' },
 ];
 
 type CellValue = boolean | string;
@@ -73,9 +73,8 @@ export default function Comparison() {
               {ROWS.map((row, i) => (
                 <tr
                   key={i}
-                  className={`border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors ${
-                    i % 2 === 0 ? '' : 'bg-gray-50/30'
-                  }`}
+                  className={`border-b border-gray-50 last:border-0 hover:bg-gray-50/50 transition-colors ${i % 2 === 0 ? '' : 'bg-gray-50/30'
+                    }`}
                 >
                   <td className="px-4 py-3 text-sm text-gray-700 font-medium">{row.feature}</td>
                   <Cell value={row.devin} />

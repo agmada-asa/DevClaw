@@ -1,10 +1,10 @@
 const CHAT_MESSAGES = [
   { from: 'user', text: 'The login button is broken on mobile Safari 🐛' },
-  { from: 'bot',  text: '✅ Issue #47 created in your repo.' },
-  { from: 'bot',  text: '🏗️ Architecture plan ready — 2 files affected. Approve to start?' },
+  { from: 'bot', text: '✅ Issue #47 created in your repo.' },
+  { from: 'bot', text: '🏗️ Architecture plan ready — 2 files affected. Approve to start?' },
   { from: 'user', text: '/approve' },
-  { from: 'bot',  text: '🤖 Generator + Reviewer agents working...' },
-  { from: 'bot',  text: '🎉 PR #48 opened — reviewed, documented, ready to merge.' },
+  { from: 'bot', text: '🤖 Generator + Reviewer agents working...' },
+  { from: 'bot', text: '🎉 PR #48 opened — reviewed, documented, ready to merge.' },
 ];
 
 export default function Hero() {
@@ -60,7 +60,7 @@ export default function Hero() {
           {/* Social proof */}
           <div className="flex items-center gap-6 pt-4 border-t border-gray-100">
             <div>
-              <p className="text-2xl font-bold text-gray-900">£29<span className="text-sm font-medium text-gray-400">/mo</span></p>
+              <p className="text-2xl font-bold text-gray-900">Custom<span className="text-sm font-medium text-gray-400">/mo</span></p>
               <p className="text-xs text-gray-400 mt-0.5">Full AI dev team</p>
             </div>
             <div className="w-px h-10 bg-gray-100" />
@@ -104,11 +104,10 @@ export default function Hero() {
                       className={`flex ${msg.from === 'user' ? 'justify-end' : 'justify-start'}`}
                     >
                       <div
-                        className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm leading-snug ${
-                          msg.from === 'user'
+                        className={`max-w-[80%] px-3 py-2 rounded-2xl text-sm leading-snug ${msg.from === 'user'
                             ? 'bg-[#2AABEE] text-white rounded-br-sm'
                             : 'bg-white text-gray-800 rounded-bl-sm shadow-sm'
-                        }`}
+                          }`}
                       >
                         {msg.text}
                       </div>
