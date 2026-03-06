@@ -269,7 +269,7 @@ export default function LandingPage({ onEnter, onAdmin }: Props) {
       {/* ════════════════════════════════════════════════════
           SOLUTION SECTION
       ════════════════════════════════════════════════════ */}
-      <section className="relative py-32 px-6 flex flex-col items-center overflow-hidden" style={{ background: 'linear-gradient(180deg, #0a0205 0%, #050505 100%)' }}>
+      <section className="relative py-16 px-6 flex flex-col items-center overflow-hidden" style={{ background: 'linear-gradient(180deg, #0a0205 0%, #050505 100%)' }}>
 
         {/* Background glow */}
         <div
@@ -310,7 +310,7 @@ export default function LandingPage({ onEnter, onAdmin }: Props) {
         </div>
 
         {/* Bottom CTA */}
-        <div className="mt-20 flex flex-col items-center gap-4">
+        <div className="mt-10 flex flex-col items-center gap-4">
           <p className="text-[10px] font-mono text-white/20 tracking-[0.4em] uppercase">Ready to ship faster?</p>
           <button
             onClick={onEnter}
@@ -321,7 +321,7 @@ export default function LandingPage({ onEnter, onAdmin }: Props) {
         </div>
 
         {/* Footer note */}
-        <p className="mt-16 text-[10px] text-white/15 font-mono tracking-[0.3em]">
+        <p className="mt-8 text-[10px] text-white/15 font-mono tracking-[0.3em]">
           UK AI AGENT HACK EP4 · OPENCLAW
         </p>
       </section>
