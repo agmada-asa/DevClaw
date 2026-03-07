@@ -211,9 +211,9 @@ describe('ExecutionStageManager', () => {
         expect(result).not.toBeNull();
         expect(result?.agentLoopReport.totalSubTasks).toBe(2);
         expect(result?.agentLoopReport.approvedSubTasks).toBe(2);
-        expect(result?.approvedPatchSet.subTasks).toHaveLength(2);
-        expect(result?.approvedPatchSet.branchName).toBe('devclaw/fix-plan-123');
-        expect(result?.approvedPatchSet.patch).toBe('combined patch output');
+        expect(result?.approvedPatchSet?.subTasks).toHaveLength(2);
+        expect(result?.approvedPatchSet?.branchName).toBe('devclaw/fix-plan-123');
+        expect(result?.approvedPatchSet?.patch).toBe('combined patch output');
         expect(result?.branchPush).toEqual({
             remote: 'origin',
             branchName: 'devclaw/fix-plan-123',
@@ -279,6 +279,62 @@ describe('ExecutionStageManager', () => {
             call.args[0] === 'clean' &&
             call.args[1] === '-fd'
         )).toBe(true);
+    });
+
+    it('does not publish a patch set or push a branch when no subTasks are approved', async () => {
+        const gitCalls: GitCommandCall[] = [];
+        const gitState: MockGitState = {
+            branch: 'devclaw/fix-plan-123',
+            head: 'base-commit',
+            commitCount: 0,
+        };
+        const runGit = createRunGitMock(gitCalls, gitState);
+
+        const frontendFactory: AgentPairFactory = {
+            createPair: () => ({
+                domain: 'frontend',
+                agent: 'Frontend',
+                generator: {
+                    name: 'FrontendGenerator',
+                    run: async () => ({
+                        content: '{"summary":"No usable files","notes":["missing files"]}',
+                        model: 'glm-4.7-flash',
+                        provider: 'zai',
+                    }),
+                },
+                reviewer: {
+                    name: 'FrontendReviewer',
+                    run: async () => ({
+                        decision: 'REWRITE',
+                        notes: ['Needs rewrite'],
+                        content: '{"decision":"REWRITE","notes":["Needs rewrite"]}',
+                        model: 'glm-4.7',
+                        provider: 'zai',
+                    }),
+                },
+            }),
+        };
+
+        const registry = new AgentPairFactoryRegistry({
+            frontendFactory,
+            backendFactory: createFactory(
+                'BackendGenerator',
+                'BackendReviewer',
+                ['APPROVED'],
+                'services/api/src/handler.ts',
+                []
+            ),
+        });
+
+        const manager = new ExecutionStageManager(registry, runGit as any, 3, 8_000, 10, true);
+        const result = await manager.run(createPayload(workspacePath, [
+            createSubTask('plan-frontend', 'frontend', 'apps/web/src/App.tsx'),
+        ]));
+
+        expect(result?.agentLoopReport.approvedSubTasks).toBe(0);
+        expect(result?.approvedPatchSet).toBeUndefined();
+        expect(result?.branchPush).toBeUndefined();
+        expect(gitCalls.some((call) => call.args[0] === 'push')).toBe(false);
     });
 
     it('handles unborn HEAD by using empty tree and fallback reset', async () => {
@@ -373,7 +429,7 @@ describe('ExecutionStageManager', () => {
             createSubTask('plan-frontend', 'frontend', 'apps/web/src/App.tsx'),
         ]));
 
-        expect(result?.approvedPatchSet.baseCommit).toBe('4b825dc642cb6eb9a060e54bf8d69288fbee4904');
+        expect(result?.approvedPatchSet?.baseCommit).toBe('4b825dc642cb6eb9a060e54bf8d69288fbee4904');
         expect(gitCalls.some((call) =>
             call.args[0] === 'reset' &&
             call.args[1] === '--hard' &&
@@ -444,7 +500,7 @@ describe('ExecutionStageManager', () => {
             executionBranchName: 'unknown',
         });
 
-        expect(result?.approvedPatchSet.branchName).toBe('devclaw/run-run-abcd');
+        expect(result?.approvedPatchSet?.branchName).toBe('devclaw/run-run-abcd');
         expect(gitCalls.some((call) =>
             call.args[0] === 'checkout' &&
             call.args[1] === '-B' &&
@@ -563,7 +619,7 @@ describe('ExecutionStageManager', () => {
             createSubTask('plan-frontend', 'frontend', 'apps/web/src/App.tsx'),
         ]));
 
-        expect(result?.approvedPatchSet.subTasks).toHaveLength(1);
+        expect(result?.approvedPatchSet?.subTasks).toHaveLength(1);
         expect(gitCalls.some((call) => call.args[0] === 'apply')).toBe(true);
     });
 
@@ -617,8 +673,236 @@ describe('ExecutionStageManager', () => {
             createSubTask('plan-frontend', 'frontend', 'apps/web/src/App.tsx'),
         ]));
 
-        expect(result?.approvedPatchSet.subTasks).toHaveLength(1);
+        expect(result?.approvedPatchSet?.subTasks).toHaveLength(1);
         expect(gitCalls.some((call) => call.args[0] === 'add')).toBe(true);
+    });
+
+    it('extracts file rewrites when generator JSON includes literal newlines inside file content strings', async () => {
+        const gitCalls: GitCommandCall[] = [];
+        const gitState: MockGitState = {
+            branch: 'devclaw/fix-plan-123',
+            head: 'base-commit',
+            commitCount: 0,
+        };
+        const runGit = createRunGitMock(gitCalls, gitState);
+
+        const frontendFactory: AgentPairFactory = {
+            createPair: () => ({
+                domain: 'frontend',
+                agent: 'Frontend',
+                generator: {
+                    name: 'FrontendGenerator',
+                    run: async () => ({
+                        content: [
+                            '{',
+                            '  "summary": "Create landing page",',
+                            '  "files": [',
+                            '    {',
+                            '      "path": "apps/web/src/App.tsx",',
+                            '      "content": "export default function App() {',
+                            '  return <main>Hello</main>;',
+                            '}"',
+                            '    }',
+                            '  ],',
+                            '  "notes": ["Updated target file"]',
+                            '}',
+                        ].join('\n'),
+                        model: 'glm-4.7-flash',
+                        provider: 'zai',
+                    }),
+                },
+                reviewer: {
+                    name: 'FrontendReviewer',
+                    run: async () => ({
+                        decision: 'APPROVED',
+                        notes: ['Ready'],
+                        content: '{"decision":"APPROVED","notes":["Ready"]}',
+                        model: 'glm-4.7',
+                        provider: 'zai',
+                    }),
+                },
+            }),
+        };
+
+        const registry = new AgentPairFactoryRegistry({
+            frontendFactory,
+            backendFactory: createFactory(
+                'BackendGenerator',
+                'BackendReviewer',
+                ['APPROVED'],
+                'services/api/src/handler.ts',
+                []
+            ),
+        });
+        const manager = new ExecutionStageManager(registry, runGit as any, 3, 8_000, 10, true);
+
+        const result = await manager.run(createPayload(workspacePath, [
+            createSubTask('plan-frontend', 'frontend', 'apps/web/src/App.tsx'),
+        ]));
+
+        expect(result?.approvedPatchSet?.subTasks).toHaveLength(1);
+        expect(gitCalls.some((call) => call.args[0] === 'add')).toBe(true);
+        await expect(readFile(path.join(workspacePath, 'apps/web/src/App.tsx'), 'utf8')).resolves.toBe(
+            'export default function App() {\n  return <main>Hello</main>;\n}'
+        );
+    });
+
+    it('extracts file rewrites from fenced JSON when trailing text exists', async () => {
+        const gitCalls: GitCommandCall[] = [];
+        const gitState: MockGitState = {
+            branch: 'devclaw/fix-plan-123',
+            head: 'base-commit',
+            commitCount: 0,
+        };
+        const runGit = createRunGitMock(gitCalls, gitState);
+
+        const frontendFactory: AgentPairFactory = {
+            createPair: () => ({
+                domain: 'frontend',
+                agent: 'Frontend',
+                generator: {
+                    name: 'FrontendGenerator',
+                    run: async () => ({
+                        content: [
+                            '```json',
+                            JSON.stringify({
+                                summary: 'Apply requested change',
+                                files: [
+                                    {
+                                        path: 'apps/web/src/App.tsx',
+                                        content: 'after\n',
+                                    },
+                                ],
+                                notes: ['Updated target file'],
+                            }, null, 2),
+                            '```',
+                            'Generator note: completed successfully.',
+                        ].join('\n'),
+                        model: 'glm-4.7-flash',
+                        provider: 'zai',
+                    }),
+                },
+                reviewer: {
+                    name: 'FrontendReviewer',
+                    run: async () => ({
+                        decision: 'APPROVED',
+                        notes: ['Ready'],
+                        content: '{"decision":"APPROVED","notes":["Ready"]}',
+                        model: 'glm-4.7',
+                        provider: 'zai',
+                    }),
+                },
+            }),
+        };
+
+        const registry = new AgentPairFactoryRegistry({
+            frontendFactory,
+            backendFactory: createFactory(
+                'BackendGenerator',
+                'BackendReviewer',
+                ['APPROVED'],
+                'services/api/src/handler.ts',
+                []
+            ),
+        });
+        const manager = new ExecutionStageManager(registry, runGit as any, 3, 8_000, 10, true);
+
+        const result = await manager.run(createPayload(workspacePath, [
+            createSubTask('plan-frontend', 'frontend', 'apps/web/src/App.tsx'),
+        ]));
+
+        expect(result?.approvedPatchSet?.subTasks).toHaveLength(1);
+        expect(gitCalls.some((call) => call.args[0] === 'add')).toBe(true);
+    });
+
+    it('extracts file rewrites from fenced JSON when file content contains raw HTML quotes', async () => {
+        const gitCalls: GitCommandCall[] = [];
+        const gitState: MockGitState = {
+            branch: 'devclaw/fix-plan-123',
+            head: 'base-commit',
+            commitCount: 0,
+        };
+        const runGit = createRunGitMock(gitCalls, gitState);
+
+        const frontendFactory: AgentPairFactory = {
+            createPair: () => ({
+                domain: 'frontend',
+                agent: 'Frontend',
+                generator: {
+                    name: 'FrontendGenerator',
+                    run: async () => ({
+                        content: [
+                            '```json',
+                            '{',
+                            '  "summary": "Create portfolio page",',
+                            '  "files": [',
+                            '    {',
+                            '      "path": "apps/web/src/App.tsx",',
+                            '      "content": "<!DOCTYPE html>',
+                            '<html lang="en">',
+                            '<head>',
+                            '  <meta charset="UTF-8" />',
+                            '  <meta name="viewport" content="width=device-width, initial-scale=1.0" />',
+                            '</head>',
+                            '<body class="page">',
+                            '  <main id="app">Allen</main>',
+                            '</body>',
+                            '</html>"',
+                            '    }',
+                            '  ],',
+                            '  "notes": ["Updated target file"]',
+                            '}',
+                            '```',
+                        ].join('\n'),
+                        model: 'glm-4.7-flash',
+                        provider: 'zai',
+                    }),
+                },
+                reviewer: {
+                    name: 'FrontendReviewer',
+                    run: async () => ({
+                        decision: 'APPROVED',
+                        notes: ['Ready'],
+                        content: '{"decision":"APPROVED","notes":["Ready"]}',
+                        model: 'glm-4.7',
+                        provider: 'zai',
+                    }),
+                },
+            }),
+        };
+
+        const registry = new AgentPairFactoryRegistry({
+            frontendFactory,
+            backendFactory: createFactory(
+                'BackendGenerator',
+                'BackendReviewer',
+                ['APPROVED'],
+                'services/api/src/handler.ts',
+                []
+            ),
+        });
+        const manager = new ExecutionStageManager(registry, runGit as any, 3, 8_000, 10, true);
+
+        const result = await manager.run(createPayload(workspacePath, [
+            createSubTask('plan-frontend', 'frontend', 'apps/web/src/App.tsx'),
+        ]));
+
+        expect(result?.approvedPatchSet?.subTasks).toHaveLength(1);
+        expect(gitCalls.some((call) => call.args[0] === 'add')).toBe(true);
+        await expect(readFile(path.join(workspacePath, 'apps/web/src/App.tsx'), 'utf8')).resolves.toBe(
+            [
+                '<!DOCTYPE html>',
+                '<html lang="en">',
+                '<head>',
+                '  <meta charset="UTF-8" />',
+                '  <meta name="viewport" content="width=device-width, initial-scale=1.0" />',
+                '</head>',
+                '<body class="page">',
+                '  <main id="app">Allen</main>',
+                '</body>',
+                '</html>',
+            ].join('\n')
+        );
     });
 
     it('does not force backend rewrite when reviewer approves and staged diff is empty', async () => {
@@ -730,8 +1014,8 @@ describe('ExecutionStageManager', () => {
         ]));
 
         expect(result?.agentLoopReport.subTasks[0].finalDecision).toBe('APPROVED');
-        expect(result?.approvedPatchSet.subTasks[0].commitSha).toBe('');
-        expect(result?.approvedPatchSet.subTasks[0].filesChanged).toEqual([]);
+        expect(result?.approvedPatchSet?.subTasks[0]?.commitSha).toBe('');
+        expect(result?.approvedPatchSet?.subTasks[0]?.filesChanged).toEqual([]);
         expect(gitCalls.some((call) => call.args[0] === 'commit')).toBe(false);
     });
 });

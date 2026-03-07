@@ -250,6 +250,26 @@ describe('Orchestrator API', () => {
     });
 
     it('POST /api/approve → sends completion message with repo and branch links', async () => {
+        mockedAxiosPost.mockImplementation(async (url: any) => {
+            if (typeof url === 'string' && url.includes('/api/execute')) {
+                return {
+                    data: {
+                        runRef: 'runId',
+                        engine: 'openclaw',
+                        approvedPatchSet: {
+                            patchSetRef: 'runId:abc123',
+                            branchName: 'devclaw/fix-plan-123-login-flow',
+                        },
+                        branchPush: {
+                            branchName: 'devclaw/fix-plan-123-login-flow',
+                            pushed: true,
+                        },
+                    },
+                } as any;
+            }
+            return { data: {} } as any;
+        });
+
         const mockSupabase = createClient('', '');
         ((mockSupabase as any).single as jest.Mock)
             .mockResolvedValueOnce({
@@ -294,6 +314,137 @@ describe('Orchestrator API', () => {
         expect(completionMessage).toContain(
             '🔗 *Branch link:* https://github.com/owner/repo/tree/devclaw/fix-plan-123-login-flow'
         );
+    });
+
+    it('POST /api/approve → prefers execution-returned branch metadata over placeholder branch names', async () => {
+        mockedProvisionIsolation.mockResolvedValueOnce({
+            workspacePath: '/tmp/devclaw-isolated/runId',
+            branchName: 'unknown',
+            baseBranch: 'main',
+        });
+        mockedAxiosPost.mockImplementation(async (url: any) => {
+            if (typeof url === 'string' && url.includes('/api/execute')) {
+                return {
+                    data: {
+                        runRef: 'runId',
+                        engine: 'openclaw',
+                        approvedPatchSet: {
+                            patchSetRef: 'runId:abc123',
+                            branchName: 'devclaw/run-runid',
+                        },
+                        branchPush: {
+                            branchName: 'devclaw/run-runid',
+                            pushed: true,
+                        },
+                    },
+                } as any;
+            }
+            return { data: {} } as any;
+        });
+
+        const mockSupabase = createClient('', '');
+        ((mockSupabase as any).single as jest.Mock)
+            .mockResolvedValueOnce({
+                data: {
+                    id: 'runId',
+                    plan_id: 'plan-123',
+                    user_id: 'u1',
+                    repo: 'owner/repo',
+                    issue_number: 42,
+                    issue_url: 'https://github.com/owner/repo/issues/42',
+                    description: 'Fix login flow',
+                    plan_details: mockApprovedPlan,
+                    channel: 'telegram',
+                    chat_id: '123',
+                },
+                error: null,
+            })
+            .mockResolvedValueOnce({
+                data: {
+                    github_token: 'ghtoken',
+                },
+                error: null,
+            });
+
+        const res = await request(app).post('/api/approve').send({ planId: 'plan-123' });
+        expect(res.status).toBe(200);
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        const completionCall = mockedAxiosPost.mock.calls.find(([url, body]) =>
+            typeof url === 'string' &&
+            url.includes('/api/send') &&
+            typeof (body as any)?.message === 'string' &&
+            (body as any).message.includes('✅ *Code is ready!*')
+        );
+
+        expect(completionCall).toBeDefined();
+        const completionMessage = (completionCall?.[1] as any).message as string;
+        expect(completionMessage).toContain('🌿 *Branch:* `devclaw/run-runid`');
+        expect(completionMessage).toContain(
+            '🔗 *Branch link:* https://github.com/owner/repo/tree/devclaw/run-runid'
+        );
+        expect(completionMessage).not.toContain('🌿 *Branch:* `unknown`');
+    });
+
+    it('POST /api/approve → sends failure-style completion when execution approves no subTasks', async () => {
+        mockedAxiosPost.mockImplementation(async (url: any) => {
+            if (typeof url === 'string' && url.includes('/api/execute')) {
+                return {
+                    data: {
+                        runRef: 'runId',
+                        engine: 'openclaw',
+                        agentLoop: {
+                            approvedSubTasks: 0,
+                            totalSubTasks: 1,
+                        },
+                    },
+                } as any;
+            }
+            return { data: {} } as any;
+        });
+
+        const mockSupabase = createClient('', '');
+        ((mockSupabase as any).single as jest.Mock)
+            .mockResolvedValueOnce({
+                data: {
+                    id: 'runId',
+                    plan_id: 'plan-123',
+                    user_id: 'u1',
+                    repo: 'owner/repo',
+                    issue_number: 42,
+                    issue_url: 'https://github.com/owner/repo/issues/42',
+                    description: 'Fix login flow',
+                    plan_details: mockApprovedPlan,
+                    channel: 'telegram',
+                    chat_id: '123',
+                },
+                error: null,
+            })
+            .mockResolvedValueOnce({
+                data: {
+                    github_token: 'ghtoken',
+                },
+                error: null,
+            });
+
+        const res = await request(app).post('/api/approve').send({ planId: 'plan-123' });
+        expect(res.status).toBe(200);
+
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        const failureCall = mockedAxiosPost.mock.calls.find(([url, body]) =>
+            typeof url === 'string' &&
+            url.includes('/api/send') &&
+            typeof (body as any)?.message === 'string' &&
+            (body as any).message.includes('⚠️ *Execution did not produce approved changes*')
+        );
+
+        expect(failureCall).toBeDefined();
+        const failureMessage = (failureCall?.[1] as any).message as string;
+        expect(failureMessage).toContain('Approved subtasks: 0/1');
+        expect(failureMessage).toContain('no code branch was published');
+        expect(failureMessage).not.toContain('✅ *Code is ready!*');
     });
 
     // ── POST /api/reject ────────────────────────────────────────────────────

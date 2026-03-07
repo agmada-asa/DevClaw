@@ -42,8 +42,8 @@ interface ApprovedSubTaskResult {
 
 export interface ExecutionStageResult {
     agentLoopReport: AgentLoopReport;
-    approvedPatchSet: ApprovedPatchSet;
-    branchPush: BranchPushResult;
+    approvedPatchSet?: ApprovedPatchSet;
+    branchPush?: BranchPushResult;
 }
 
 interface GeneratedFileRewrite {
@@ -110,25 +110,87 @@ const runGitCli: GitExecutor = async (
 
 const EMPTY_TREE_SHA = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 
+const extractBalancedJsonObjects = (text: string): string[] => {
+    const candidates: string[] = [];
+    let inString = false;
+    let isEscaped = false;
+    let depth = 0;
+    let objectStart = -1;
+
+    for (let i = 0; i < text.length; i += 1) {
+        const ch = text[i];
+
+        if (inString) {
+            if (isEscaped) {
+                isEscaped = false;
+                continue;
+            }
+            if (ch === '\\') {
+                isEscaped = true;
+                continue;
+            }
+            if (ch === '"') {
+                inString = false;
+            }
+            continue;
+        }
+
+        if (ch === '"') {
+            inString = true;
+            continue;
+        }
+
+        if (ch === '{') {
+            if (depth === 0) {
+                objectStart = i;
+            }
+            depth += 1;
+            continue;
+        }
+
+        if (ch === '}' && depth > 0) {
+            depth -= 1;
+            if (depth === 0 && objectStart >= 0) {
+                candidates.push(text.slice(objectStart, i + 1).trim());
+                objectStart = -1;
+            }
+        }
+    }
+
+    return candidates;
+};
+
 const extractJsonObject = (text: string): string | null => {
-    let cleanText = text.trim();
-    if (cleanText.toLowerCase().startsWith('```json')) {
-        cleanText = cleanText.substring(7).trim();
-    } else if (cleanText.startsWith('```')) {
-        cleanText = cleanText.substring(3).trim();
+    const rawText = text.trim();
+    if (!rawText) {
+        return null;
     }
 
-    if (cleanText.endsWith('```')) {
-        cleanText = cleanText.substring(0, cleanText.length - 3).trim();
+    const sources: string[] = [];
+    const fencedRegex = /```(?:json)?\s*([\s\S]*?)```/gi;
+    let fencedMatch: RegExpExecArray | null;
+
+    while ((fencedMatch = fencedRegex.exec(rawText)) !== null) {
+        if (fencedMatch[1]?.trim()) {
+            sources.push(fencedMatch[1].trim());
+        }
     }
 
-    const start = cleanText.indexOf('{');
-    const end = cleanText.lastIndexOf('}');
-    if (start !== -1 && end > start) {
-        return cleanText.slice(start, end + 1).trim();
+    // Also scan the full raw text to tolerate outputs that include extra prose/noise.
+    sources.push(rawText);
+
+    let fallback: string | null = null;
+    for (const source of sources) {
+        const candidates = extractBalancedJsonObjects(source);
+        for (const candidate of candidates) {
+            fallback = fallback || candidate;
+            if (parseLooseJsonObject(candidate)) {
+                return candidate;
+            }
+        }
     }
 
-    return null;
+    return fallback;
 };
 
 const isPlaceholderValue = (value: string | undefined): boolean => {
@@ -199,6 +261,75 @@ const extractPatchFieldString = (text: string): string => {
     return '';
 };
 
+const extractFencedBodies = (text: string): string[] => {
+    const bodies: string[] = [];
+    const fencedRegex = /```(?:json)?\s*([\s\S]*?)```/gi;
+    let match: RegExpExecArray | null;
+
+    while ((match = fencedRegex.exec(text)) !== null) {
+        if (match[1]?.trim()) {
+            bodies.push(match[1].trim());
+        }
+    }
+
+    return bodies;
+};
+
+const escapeJsonControlCharsInStrings = (value: string): string => {
+    let inString = false;
+    let escaped = false;
+    let output = '';
+
+    for (let i = 0; i < value.length; i += 1) {
+        const ch = value[i];
+
+        if (inString) {
+            if (escaped) {
+                output += ch;
+                escaped = false;
+                continue;
+            }
+
+            if (ch === '\\') {
+                output += ch;
+                escaped = true;
+                continue;
+            }
+
+            if (ch === '"') {
+                output += ch;
+                inString = false;
+                continue;
+            }
+
+            if (ch === '\n') {
+                output += '\\n';
+                continue;
+            }
+
+            if (ch === '\r') {
+                output += '\\r';
+                continue;
+            }
+
+            if (ch === '\t') {
+                output += '\\t';
+                continue;
+            }
+
+            output += ch;
+            continue;
+        }
+
+        output += ch;
+        if (ch === '"') {
+            inString = true;
+        }
+    }
+
+    return output;
+};
+
 const parseLooseJsonObject = (text: string): Record<string, unknown> | null => {
     const candidate = text.trim();
     if (!candidate) {
@@ -208,6 +339,8 @@ const parseLooseJsonObject = (text: string): Record<string, unknown> | null => {
     const attempts = [
         candidate,
         candidate.replace(/,\s*([}\]])/g, '$1'),
+        escapeJsonControlCharsInStrings(candidate),
+        escapeJsonControlCharsInStrings(candidate).replace(/,\s*([}\]])/g, '$1'),
     ];
 
     for (const attempt of attempts) {
@@ -222,6 +355,86 @@ const parseLooseJsonObject = (text: string): Record<string, unknown> | null => {
     }
 
     return null;
+};
+
+const decodeLooseFileContent = (value: string): string =>
+    value
+        .replace(/\r\n/g, '\n')
+        .replace(/\\r\\n/g, '\n')
+        .replace(/\\n/g, '\n')
+        .replace(/\\r/g, '\r')
+        .replace(/\\t/g, '\t')
+        .replace(/\\"/g, '"')
+        .replace(/\\\//g, '/')
+        .replace(/\\\\/g, '\\');
+
+const findLooseContentTerminatorOffset = (text: string): number => {
+    const patterns = [
+        /"\s*}\s*,\s*{/,
+        /"\s*}\s*]\s*,\s*"/,
+        /"\s*}\s*]\s*}/,
+    ];
+
+    let earliest = -1;
+    for (const pattern of patterns) {
+        const match = pattern.exec(text);
+        if (!match) {
+            continue;
+        }
+        if (earliest === -1 || match.index < earliest) {
+            earliest = match.index;
+        }
+    }
+
+    return earliest;
+};
+
+const extractLooseJsonFileRewrites = (content: string): GeneratedFileRewrite[] => {
+    const sources = [...extractFencedBodies(content), content];
+    const rewrites: GeneratedFileRewrite[] = [];
+
+    for (const source of sources) {
+        let cursor = 0;
+
+        while (cursor < source.length) {
+            const pathMatch = /"path"\s*:\s*"([^"\n]+)"/g.exec(source.slice(cursor));
+            if (!pathMatch || typeof pathMatch.index !== 'number') {
+                break;
+            }
+
+            const path = pathMatch[1]?.trim();
+            const absolutePathMatchIndex = cursor + pathMatch.index;
+            const afterPathIndex = absolutePathMatchIndex + pathMatch[0].length;
+            const contentMatch = /"content"\s*:\s*"/g.exec(source.slice(afterPathIndex));
+
+            if (!path || !contentMatch || typeof contentMatch.index !== 'number') {
+                cursor = afterPathIndex;
+                continue;
+            }
+
+            const contentStart = afterPathIndex + contentMatch.index + contentMatch[0].length;
+            const remaining = source.slice(contentStart);
+            const terminatorOffset = findLooseContentTerminatorOffset(remaining);
+
+            if (terminatorOffset === -1) {
+                cursor = contentStart;
+                continue;
+            }
+
+            rewrites.push({
+                path,
+                content: decodeLooseFileContent(remaining.slice(0, terminatorOffset)),
+            });
+
+            cursor = contentStart + terminatorOffset + 1;
+        }
+
+        if (rewrites.length > 0) {
+            return rewrites.slice(0, 50);
+        }
+    }
+
+    return [];
 };
 
 const toGeneratedFileRewrites = (value: unknown): GeneratedFileRewrite[] => {
@@ -272,7 +485,7 @@ const extractFileRewritesFromContent = (content: string): GeneratedFileRewrite[]
     }
 
     const jsonObject = extractJsonObject(content);
-    const candidates = [jsonObject, content]
+    const candidates = [jsonObject, ...extractFencedBodies(content), content]
         .filter((entry): entry is string => Boolean(entry))
         .map((entry) => entry.trim());
 
@@ -290,6 +503,11 @@ const extractFileRewritesFromContent = (content: string): GeneratedFileRewrite[]
         if (altRewrites.length > 0) {
             return altRewrites;
         }
+    }
+
+    const looseRewrites = extractLooseJsonFileRewrites(content);
+    if (looseRewrites.length > 0) {
+        return looseRewrites;
     }
 
     return [];
@@ -504,6 +722,17 @@ export class ExecutionStageManager {
             rewriteRequiredSubTasks: loopResults.length - approvedCount,
             subTasks: loopResults,
         };
+
+        if (approvedCount === 0) {
+            console.warn(
+                `[AgentRunner][ExecutionStage] No subTasks were approved for runId=${payload.runId}; ` +
+                'skipping branch push and approved patch set publication'
+            );
+
+            return {
+                agentLoopReport,
+            };
+        }
 
         const headCommit = await this.resolveHeadCommit(workspacePath);
         const patch = (await this.runGit(['diff', `${baseCommit}..${headCommit}`], workspacePath)).stdout;

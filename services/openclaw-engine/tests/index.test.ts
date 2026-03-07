@@ -201,6 +201,17 @@ describe('OpenClaw Engine API', () => {
             data: {
                 runRef: 'stub-run-123',
                 engine: 'stub',
+                approvedPatchSet: {
+                    patchSetRef: 'run-123:abc123',
+                    branchName: 'devclaw/run-run-123',
+                },
+                branchPush: {
+                    branchName: 'devclaw/run-run-123',
+                    pushed: true,
+                },
+                agentLoop: {
+                    approvedSubTasks: 1,
+                },
             },
         } as any);
 
@@ -215,6 +226,17 @@ describe('OpenClaw Engine API', () => {
         expect(res.body.status).toBe('dispatched');
         expect(res.body.runRef).toBe('stub-run-123');
         expect(res.body.engine).toBe('stub');
+        expect(res.body.approvedPatchSet).toMatchObject({
+            patchSetRef: 'run-123:abc123',
+            branchName: 'devclaw/run-run-123',
+        });
+        expect(res.body.branchPush).toMatchObject({
+            branchName: 'devclaw/run-run-123',
+            pushed: true,
+        });
+        expect(res.body.agentLoop).toMatchObject({
+            approvedSubTasks: 1,
+        });
         expect(mockPost).toHaveBeenCalledTimes(1);
         expect(mockPost.mock.calls[0][0]).toContain('/api/execute');
     });

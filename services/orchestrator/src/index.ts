@@ -48,6 +48,27 @@ const resolveBotUrl = (channel: unknown): string | undefined => {
     return undefined;
 };
 
+const normalizeBranchName = (value: unknown): string => {
+    if (typeof value !== 'string') {
+        return '';
+    }
+    const normalized = value.trim();
+    if (!normalized) {
+        return '';
+    }
+    const placeholder = normalized.toLowerCase();
+    if (
+        placeholder === 'unknown' ||
+        placeholder === 'n/a' ||
+        placeholder === 'none' ||
+        placeholder === 'null' ||
+        placeholder === 'undefined'
+    ) {
+        return '';
+    }
+    return normalized;
+};
+
 const formatErrorDetails = (err: any): string => {
     const message = err?.message || 'Unknown error';
     const status = err?.response?.status;
@@ -421,20 +442,60 @@ app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
                 executionBranchName: isolatedEnvironment.branchName,
             });
 
+            const agentLoop = execution.agentLoop as { approvedSubTasks?: unknown; totalSubTasks?: unknown } | undefined;
+            const approvedSubTaskCount = typeof agentLoop?.approvedSubTasks === 'number'
+                ? agentLoop.approvedSubTasks
+                : undefined;
+            const totalSubTaskCount = typeof agentLoop?.totalSubTasks === 'number'
+                ? agentLoop.totalSubTasks
+                : undefined;
+
+            if (!execution.approvedPatchSet || approvedSubTaskCount === 0) {
+                console.warn(
+                    `[Orchestrator] Execution completed without approved changes for run ${updated.id}. ` +
+                    `approvedSubTasks=${String(approvedSubTaskCount ?? 'n/a')} ` +
+                    `totalSubTasks=${String(totalSubTaskCount ?? 'n/a')}`
+                );
+
+                if (updated.chat_id) {
+                    const botUrl = resolveBotUrl(updated.channel);
+                    if (botUrl) {
+                        const message = [
+                            '⚠️ *Execution did not produce approved changes*',
+                            '',
+                            `Repository: https://github.com/${updated.repo}`,
+                            `Run: \`${updated.id}\``,
+                            ...(typeof approvedSubTaskCount === 'number' && typeof totalSubTaskCount === 'number'
+                                ? [`Approved subtasks: ${approvedSubTaskCount}/${totalSubTaskCount}`]
+                                : []),
+                            '',
+                            'The generator output was rejected during execution, so no code branch was published.',
+                            'Check the service logs and rerun after fixing the generator/parsing issue.',
+                        ].join('\n');
+                        axios.post(`${botUrl}/api/send`, {
+                            chatId: updated.chat_id,
+                            message,
+                        }, { timeout: ORCHESTRATOR_BOT_SEND_TIMEOUT_MS }).catch(() => { });
+                    }
+                }
+
+                console.log(`[Orchestrator] Task ${updated.id} execution completed asynchronously.`);
+                return;
+            }
+
             if (execution.approvedPatchSet) {
                 const patchSetRef = (execution.approvedPatchSet as any)?.patchSetRef || 'n/a';
                 console.log(
                     `[Orchestrator] Received approved patch set for run ${updated.id}: ${patchSetRef}`
                 );
             }
+            const approvedPatchSet = execution.approvedPatchSet as { branchName?: unknown } | undefined;
             const branchPush = execution.branchPush as { branchName?: unknown; pushed?: unknown } | undefined;
             const pushed = typeof branchPush?.pushed === 'boolean' ? branchPush.pushed : undefined;
-            const pushedBranchName = typeof branchPush?.branchName === 'string'
-                ? branchPush.branchName.trim()
-                : '';
-            const branchName = pushedBranchName
-                || preparation?.executionBranchName
-                || preferredBranch.branchName
+            const branchName = normalizeBranchName(branchPush?.branchName)
+                || normalizeBranchName(approvedPatchSet?.branchName)
+                || normalizeBranchName(preparation?.executionBranchName)
+                || normalizeBranchName(preferredBranch.branchName)
                 || 'n/a';
 
             if (branchPush) {

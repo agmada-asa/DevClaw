@@ -109,5 +109,52 @@ describe('Agent factories', () => {
             expect.objectContaining({ role: 'backend_reviewer' })
         );
     });
+
+    it('parses reviewer decision from fenced JSON with trailing text', async () => {
+        const mockChat = jest.fn(async (request: ChatRequest): Promise<ChatResponse> => {
+            if (request.role === 'frontend_reviewer') {
+                return {
+                    content: [
+                        '```json',
+                        '{"decision":"APPROVED","notes":["Looks good"]}',
+                        '```',
+                        'extra trailing text',
+                    ].join('\n'),
+                    model: 'glm-4.7',
+                    provider: 'zai',
+                };
+            }
+
+            return {
+                content: '{"summary":"ok","notes":[],"files":[]}',
+                model: 'glm-4.7-flash',
+                provider: 'zai',
+            };
+        });
+
+        const factory = new FrontendAgentFactory(mockChat);
+        const pair = factory.createPair();
+
+        const generation = await pair.generator.run({
+            runId: 'run-1',
+            requestId: 'req-1',
+            planId: 'plan-1',
+            iteration: 1,
+            subTask,
+            reviewerNotes: [],
+        });
+
+        const review = await pair.reviewer.run({
+            runId: 'run-1',
+            requestId: 'req-1',
+            planId: 'plan-1',
+            iteration: 1,
+            subTask,
+            generation,
+        });
+
+        expect(review.decision).toBe('APPROVED');
+        expect(review.notes).toEqual(['Looks good']);
+    });
 });
 

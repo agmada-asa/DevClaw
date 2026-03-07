@@ -45,6 +45,19 @@ export interface IsolatedEnvironment {
     baseBranch: string;
 }
 
+const isPlaceholderBranchValue = (value: string | undefined): boolean => {
+    if (!value) {
+        return true;
+    }
+    const normalized = value.trim().toLowerCase();
+    return normalized.length === 0 ||
+        normalized === 'unknown' ||
+        normalized === 'n/a' ||
+        normalized === 'none' ||
+        normalized === 'null' ||
+        normalized === 'undefined';
+};
+
 const FRONTEND_FILE_HINTS = [
     /^apps\//i,
     /^frontend\//i,
@@ -208,12 +221,14 @@ export const resolvePreferredExecutionBranch = (
     fallbackDescription?: string
 ): { branchName: string; baseBranch: string } => {
     const parsed = parsePlanDetails(planDetails);
-    const branchName = typeof (parsed as PlanDetailsRecord | null)?.blueprint?.branch?.name === 'string'
+    const rawBranchName = typeof (parsed as PlanDetailsRecord | null)?.blueprint?.branch?.name === 'string'
         ? (parsed as PlanDetailsRecord).blueprint?.branch?.name?.trim()
         : undefined;
-    const baseBranch = typeof (parsed as PlanDetailsRecord | null)?.blueprint?.branch?.baseBranch === 'string'
+    const rawBaseBranch = typeof (parsed as PlanDetailsRecord | null)?.blueprint?.branch?.baseBranch === 'string'
         ? (parsed as PlanDetailsRecord).blueprint?.branch?.baseBranch?.trim()
         : undefined;
+    const branchName = isPlaceholderBranchValue(rawBranchName) ? undefined : rawBranchName;
+    const baseBranch = isPlaceholderBranchValue(rawBaseBranch) ? undefined : rawBaseBranch;
 
     return {
         branchName: branchName || buildFallbackBranchName(fallbackPlanId, fallbackDescription),
@@ -299,7 +314,9 @@ export const provisionIsolatedExecutionEnvironment = async (
         input.planId,
         input.description
     );
-    const preferredBranchName = input.preferredBranchName?.trim() || branchName;
+    const preferredBranchName = isPlaceholderBranchValue(input.preferredBranchName?.trim())
+        ? branchName
+        : input.preferredBranchName!.trim();
 
     try {
         try {

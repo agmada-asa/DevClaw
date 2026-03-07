@@ -87,25 +87,91 @@ const asNonEmptyStringArray = (value: unknown): string[] => {
         .slice(0, 10);
 };
 
+const extractBalancedJsonObjects = (text: string): string[] => {
+    const candidates: string[] = [];
+    let inString = false;
+    let isEscaped = false;
+    let depth = 0;
+    let objectStart = -1;
+
+    for (let i = 0; i < text.length; i += 1) {
+        const ch = text[i];
+
+        if (inString) {
+            if (isEscaped) {
+                isEscaped = false;
+                continue;
+            }
+            if (ch === '\\') {
+                isEscaped = true;
+                continue;
+            }
+            if (ch === '"') {
+                inString = false;
+            }
+            continue;
+        }
+
+        if (ch === '"') {
+            inString = true;
+            continue;
+        }
+
+        if (ch === '{') {
+            if (depth === 0) {
+                objectStart = i;
+            }
+            depth += 1;
+            continue;
+        }
+
+        if (ch === '}' && depth > 0) {
+            depth -= 1;
+            if (depth === 0 && objectStart >= 0) {
+                candidates.push(text.slice(objectStart, i + 1).trim());
+                objectStart = -1;
+            }
+        }
+    }
+
+    return candidates;
+};
+
 const extractJsonObject = (text: string): string | null => {
-    let cleanText = text.trim();
-    if (cleanText.toLowerCase().startsWith('```json')) {
-        cleanText = cleanText.substring(7).trim();
-    } else if (cleanText.startsWith('```')) {
-        cleanText = cleanText.substring(3).trim();
+    const rawText = text.trim();
+    if (!rawText) {
+        return null;
     }
 
-    if (cleanText.endsWith('```')) {
-        cleanText = cleanText.substring(0, cleanText.length - 3).trim();
+    const sources: string[] = [];
+    const fencedRegex = /```(?:json)?\s*([\s\S]*?)```/gi;
+    let fencedMatch: RegExpExecArray | null;
+
+    while ((fencedMatch = fencedRegex.exec(rawText)) !== null) {
+        if (fencedMatch[1]?.trim()) {
+            sources.push(fencedMatch[1].trim());
+        }
     }
 
-    const start = cleanText.indexOf('{');
-    const end = cleanText.lastIndexOf('}');
-    if (start !== -1 && end > start) {
-        return cleanText.slice(start, end + 1).trim();
+    sources.push(rawText);
+
+    let fallback: string | null = null;
+    for (const source of sources) {
+        const candidates = extractBalancedJsonObjects(source);
+        for (const candidate of candidates) {
+            fallback = fallback || candidate;
+            try {
+                const parsed = JSON.parse(candidate) as unknown;
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                    return candidate;
+                }
+            } catch {
+                // Try other candidates.
+            }
+        }
     }
 
-    return null;
+    return fallback;
 };
 
 const normalizeDecision = (value: unknown): ReviewerDecision => {

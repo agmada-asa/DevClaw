@@ -230,6 +230,21 @@ app.post('/api/execute', async (req: Request, res: Response): Promise<any> => {
             runRef: dispatch.runRef,
             engine: dispatch.engine,
             accepted: dispatch.accepted,
+            ...(dispatch.approvedPatchSet
+                ? {
+                    approvedPatchSet: dispatch.approvedPatchSet,
+                }
+                : {}),
+            ...(dispatch.branchPush
+                ? {
+                    branchPush: dispatch.branchPush,
+                }
+                : {}),
+            ...(dispatch.agentLoop
+                ? {
+                    agentLoop: dispatch.agentLoop,
+                }
+                : {}),
         });
     } catch (err: any) {
         const detail = formatExecutionError(err);
