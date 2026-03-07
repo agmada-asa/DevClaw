@@ -7,8 +7,6 @@ import path from 'path';
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3001/api/ingress/message';
-
 const parsePositiveInt = (value: string | undefined, fallback: number): number => {
     const parsed = Number.parseInt(value || '', 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -36,7 +34,9 @@ const resolveGatewayTimeoutMs = (type: string): number => {
 
 // Initialize the WhatsApp client with LocalAuth to persist session so we don't scan QR every time
 const client = new Client({
-    authStrategy: new LocalAuth(),
+    authStrategy: new LocalAuth({
+        dataPath: path.resolve(__dirname, '../.wwebjs_auth'),
+    }),
     puppeteer: {
         executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
         args: ['--no-sandbox', '--disable-setuid-sandbox'],
@@ -86,20 +86,32 @@ export const handleMessage = async (message: any) => {
             return message.reply('Could not identify your user ID for login.');
         }
 
-        // Use PUBLIC_URL if provided, else fallback to parsing GATEWAY_URL
-        let baseUrl = process.env.PUBLIC_URL || 'http://localhost:3001';
-        if (!process.env.PUBLIC_URL) {
+        // Use PUBLIC_URL if provided, else derive from GATEWAY_URL, always strip trailing slash
+        let baseUrl = process.env.PUBLIC_URL || '';
+        if (!baseUrl) {
             const gatewayUrlStr = process.env.GATEWAY_URL || 'http://localhost:3001/api/ingress/message';
             try {
                 const parsedUrl = new URL(gatewayUrlStr);
                 baseUrl = `${parsedUrl.protocol}//${parsedUrl.host}`;
             } catch (e) {
-                // Fallback
+                baseUrl = 'http://localhost:3001';
             }
         }
+        baseUrl = baseUrl.replace(/\/+$/, '');
 
-        const loginUrl = `${baseUrl}/api/auth/github?userId=${userId}&provider=whatsapp&chatId=${userId}`;
-        return message.reply(`Please click this link to link your GitHub account: ${loginUrl}\n\nOnce complete, you can use /status to check your connection or /repo <owner>/<repo> to link a project.\n\nNote: If you are running locally, make sure the gateway is accessible or update GATEWAY_URL to a public tunnel.`);
+        // Encode all metadata as an opaque state so the URL the user sees is clean
+        const statePayload = Buffer.from(
+            JSON.stringify({ userId, provider: 'whatsapp', chatId: userId })
+        ).toString('base64');
+        const loginUrl = `${baseUrl}/api/auth/github?s=${statePayload}`;
+        return message.reply(
+            `🔐 *Link your GitHub account*\n\n` +
+            `Tap the link below to authorise DevClaw:\n\n` +
+            `${loginUrl}\n\n` +
+            `After approving on GitHub you'll receive a confirmation here automatically. Then:\n` +
+            `• */repo owner/repo* — link your repository\n` +
+            `• */status* — verify your connection`
+        );
     }
 
     if (text.toLowerCase() === '/start' || text.toLowerCase() === '/help') {

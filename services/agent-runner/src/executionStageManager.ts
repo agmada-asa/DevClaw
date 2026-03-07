@@ -1,3 +1,4 @@
+import axios from 'axios';
 import { execFile } from 'node:child_process';
 import { constants as fsConstants } from 'node:fs';
 import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -248,6 +249,100 @@ const toGeneratedFileRewrites = (value: unknown): GeneratedFileRewrite[] => {
         .slice(0, 50);
 };
 
+const decodeLooseStringEscapes = (value: string): string =>
+    value
+        .replace(/\\r\\n/g, '\n')
+        .replace(/\\n/g, '\n')
+        .replace(/\\r/g, '\r')
+        .replace(/\\t/g, '\t')
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\');
+
+const parseLooseQuotedValue = (
+    text: string,
+    openingQuoteIndex: number
+): { value: string; endIndex: number } | null => {
+    if (text[openingQuoteIndex] !== '"') {
+        return null;
+    }
+
+    let i = openingQuoteIndex + 1;
+    let escaped = false;
+    let raw = '';
+
+    while (i < text.length) {
+        const char = text[i];
+        if (escaped) {
+            raw += `\\${char}`;
+            escaped = false;
+            i += 1;
+            continue;
+        }
+
+        if (char === '\\') {
+            escaped = true;
+            i += 1;
+            continue;
+        }
+
+        if (char === '"') {
+            const suffix = text.slice(i + 1);
+            if (/^\s*(,|})/.test(suffix)) {
+                return {
+                    value: decodeLooseStringEscapes(raw),
+                    endIndex: i + 1,
+                };
+            }
+        }
+
+        raw += char;
+        i += 1;
+    }
+
+    return null;
+};
+
+const extractLooseJsonLikeFileRewrites = (content: string): GeneratedFileRewrite[] => {
+    const rewrites: GeneratedFileRewrite[] = [];
+    const pathKeyRegex = /"path"\s*:\s*"/g;
+    let pathMatch: RegExpExecArray | null = null;
+
+    while ((pathMatch = pathKeyRegex.exec(content)) !== null) {
+        const pathValue = parseLooseQuotedValue(content, pathMatch.index + pathMatch[0].length - 1);
+        if (!pathValue) {
+            continue;
+        }
+        const filePath = pathValue.value.trim();
+        if (!filePath) {
+            continue;
+        }
+
+        const contentKeyRegex = /"content"\s*:\s*"/g;
+        contentKeyRegex.lastIndex = pathValue.endIndex;
+        const contentMatch = contentKeyRegex.exec(content);
+        if (!contentMatch) {
+            continue;
+        }
+
+        const contentValue = parseLooseQuotedValue(
+            content,
+            contentMatch.index + contentMatch[0].length - 1
+        );
+        if (!contentValue) {
+            continue;
+        }
+
+        rewrites.push({ path: filePath, content: contentValue.value });
+        if (rewrites.length >= 50) {
+            break;
+        }
+
+        pathKeyRegex.lastIndex = contentValue.endIndex;
+    }
+
+    return rewrites;
+};
+
 const extractFileRewritesFromContent = (content: string): GeneratedFileRewrite[] => {
     const textRewrites: GeneratedFileRewrite[] = [];
     const fileRegex = /<file\s+path=["']([^"']+)["']>([\s\S]*?)<\/file>/g;
@@ -292,6 +387,11 @@ const extractFileRewritesFromContent = (content: string): GeneratedFileRewrite[]
         if (altRewrites.length > 0) {
             return altRewrites;
         }
+    }
+
+    const looseJsonLikeRewrites = extractLooseJsonLikeFileRewrites(content);
+    if (looseJsonLikeRewrites.length > 0) {
+        return looseJsonLikeRewrites;
     }
 
     return [];
@@ -429,6 +529,11 @@ export class ExecutionStageManager {
         private readonly gitPushEnabled: boolean = isGitPushEnabled()
     ) { }
 
+    private notify(chatId: string | undefined, botUrl: string | undefined, message: string): void {
+        if (!chatId || !botUrl) return;
+        axios.post(`${botUrl}/api/send`, { chatId, message }, { timeout: 10_000 }).catch(() => { });
+    }
+
     async run(payload: ExecutePayload): Promise<ExecutionStageResult | null> {
         const subTasks = payload.executionSubTasks || [];
         if (subTasks.length === 0) {
@@ -474,6 +579,12 @@ export class ExecutionStageManager {
 
         const loopResults: SubTaskLoopResult[] = [];
         const approvedSubTasks: ApprovedPatchSubTask[] = [];
+
+        this.notify(
+            payload.progressChatId,
+            payload.progressBotUrl,
+            `🤖 *DevClaw is writing code...*\n\n_Analysing your repo and generating changes for ${subTasks.length} task(s)._`
+        );
 
         for (const subTask of subTasks) {
             const approvedSubTask = await this.runSubTaskLoop(
@@ -575,6 +686,11 @@ export class ExecutionStageManager {
         for (let iteration = 1; iteration <= this.maxIterations; iteration++) {
             console.log(
                 `[AgentRunner][ExecutionStage] subTask=${subTask.id} iteration=${iteration} generation started`
+            );
+            this.notify(
+                payload.progressChatId,
+                payload.progressBotUrl,
+                `✍️ *Writing code changes...*\n\n_Attempt ${iteration}/${this.maxIterations}: ${subTask.objective.slice(0, 120)}_`
             );
             const snapshots = await this.collectFileSnapshots(workspacePath, subTask.files);
             const generation = await pair.generator.run({
@@ -720,6 +836,11 @@ export class ExecutionStageManager {
             );
 
             if (review.decision === 'APPROVED') {
+                this.notify(
+                    payload.progressChatId,
+                    payload.progressBotUrl,
+                    `✅ *Code review passed!*\n\n_Committing changes and pushing to GitHub..._`
+                );
                 const stagedFiles = await this.listStagedFiles(workspacePath);
                 if (stagedFiles.length === 0) {
                     if (subTask.domain === 'backend') {
@@ -812,6 +933,13 @@ export class ExecutionStageManager {
                 };
             }
 
+            if (iteration < this.maxIterations) {
+                this.notify(
+                    payload.progressChatId,
+                    payload.progressBotUrl,
+                    `🔁 *Code review requested improvements*\n\n_Retrying... (attempt ${iteration + 1}/${this.maxIterations})_`
+                );
+            }
             await this.discardWorkingChanges(workspacePath);
         }
 

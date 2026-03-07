@@ -42,6 +42,7 @@ export async function callZai(
   temperature = 0.2,
   maxTokens = 4096,
   timeoutMs?: number,
+  jsonMode?: boolean,
 ): Promise<ChatResponse> {
   const apiKey = process.env.ZAI_API_KEY;
   if (!apiKey) throw new Error('[llm-router] ZAI_API_KEY is not set');
@@ -54,6 +55,7 @@ export async function callZai(
       temperature,
       max_tokens: maxTokens,
       stream: true,
+      ...(jsonMode && { response_format: { type: 'json_object' } }),
     },
     {
       headers: {

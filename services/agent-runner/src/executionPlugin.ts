@@ -34,6 +34,10 @@ export interface ExecutePayload {
     agentLoopReport?: unknown;
     approvedPatchSet?: unknown;
     branchPush?: unknown;
+    /** Chat ID to send real-time progress notifications to during execution */
+    progressChatId?: string;
+    /** Bot URL (e.g. WhatsApp bot) to POST progress messages to */
+    progressBotUrl?: string;
 }
 
 export interface ApprovedPatchSubTask {

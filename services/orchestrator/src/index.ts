@@ -301,11 +301,22 @@ app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
         .from('task_runs')
         .update({ status: 'approved' })
         .match(matchQuery)
+        .eq('status', 'pending_approval')   // idempotency gate: only approve once
         .select()
         .single();
 
     if (error || !updated) {
-        return res.status(404).json({ error: 'Task run not found' });
+        // Either not found or already approved/executing — fetch to distinguish
+        const { data: existingRun } = await supabase
+            .from('task_runs')
+            .select('id, status, plan_id')
+            .match(matchQuery)
+            .single();
+        if (!existingRun) {
+            return res.status(404).json({ error: 'Task run not found' });
+        }
+        // Already approved — return 200 so the gateway doesn't retry
+        return res.status(200).json({ success: true, message: 'Task already processing', status: existingRun.status });
     }
 
     if (updated.chat_id) {
@@ -406,6 +417,23 @@ app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
                 subTaskCount: executionSubTasks.length,
             };
 
+            // Update status to 'generating' so the dashboard shows live progress
+            if (supabase) {
+                supabase.from('task_runs')
+                    .update({ status: 'generating', branch_name: isolatedEnvironment.branchName })
+                    .eq('id', updated.id)
+                    .then(({ error: dbErr }) => {
+                        if (dbErr) console.error('[Orchestrator] Failed to update generating status:', dbErr);
+                    });
+            }
+
+            const execBotUrl = resolveBotUrl(updated.channel);
+            if (updated.chat_id && execBotUrl) {
+                axios.post(`${execBotUrl}/api/send`, {
+                    chatId: updated.chat_id,
+                    message: `⚙️ *Workspace ready!*\n\n_Cloned \`${updated.repo}\` onto branch \`${isolatedEnvironment.branchName}\`. Starting code generation now..._`,
+                }, { timeout: ORCHESTRATOR_BOT_SEND_TIMEOUT_MS }).catch(() => { });
+            }
             execution = await orchestrationEngine.execute({
                 runId: updated.id,
                 planId: approvedPlan.planId || updated.plan_id,
@@ -419,6 +447,8 @@ app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
                 executionSubTasks,
                 isolatedEnvironmentPath: isolatedEnvironment.workspacePath,
                 executionBranchName: isolatedEnvironment.branchName,
+                progressChatId: updated.chat_id || undefined,
+                progressBotUrl: execBotUrl || undefined,
             });
 
             if (execution.approvedPatchSet) {
@@ -443,6 +473,13 @@ app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
                         .then(({ error: dbErr }) => {
                             if (dbErr) console.error('[Orchestrator] Failed to update completion status:', dbErr);
                         });
+                }
+                // Ensure pr_url is stored if a PR was opened
+                if (supabase && (execution as any).prUrl) {
+                    supabase.from('task_runs')
+                        .update({ pr_url: (execution as any).prUrl, pr_number: (execution as any).prNumber })
+                        .eq('id', updated.id)
+                        .then(() => { });
                 }
 
                 if (updated.chat_id) {
@@ -519,6 +556,14 @@ app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
             }
 
             console.error('[Orchestrator] Failed to dispatch approved task for execution:', formatErrorDetails(err));
+            if (supabase) {
+                supabase.from('task_runs')
+                    .update({ status: 'failed' })
+                    .eq('id', updated.id)
+                    .then(({ error: dbErr }) => {
+                        if (dbErr) console.error('[Orchestrator] Failed to update failed status:', dbErr);
+                    });
+            }
             if (updated.chat_id) {
                 const botUrl = resolveBotUrl(updated.channel);
                 if (botUrl) {
@@ -745,6 +790,7 @@ app.post('/api/pr-amend', async (req: Request, res: Response): Promise<any> => {
 
             const executionSubTasks = buildExecutionSubTasks(approvedPlan);
 
+            const amendBotUrl = resolveBotUrl(targetChannel);
             const execution = await orchestrationEngine.execute({
                 runId: amendRunId,
                 planId: approvedPlan.planId || existingRun.plan_id,
@@ -758,6 +804,8 @@ app.post('/api/pr-amend', async (req: Request, res: Response): Promise<any> => {
                 executionSubTasks,
                 isolatedEnvironmentPath: isolatedEnvironment.workspacePath,
                 executionBranchName: isolatedEnvironment.branchName,
+                progressChatId: targetChatId || undefined,
+                progressBotUrl: amendBotUrl || undefined,
             });
 
             const branchName = (execution.branchPush as any)?.branchName || existingRun.branch_name;
@@ -800,7 +848,7 @@ app.get('/api/tasks/recent', async (req: Request, res: Response): Promise<any> =
     try {
         const { data: rows, error } = await supabase
             .from('task_runs')
-            .select('id, request_id, user_id, repo, description, status, pr_url, pr_number, created_at, updated_at')
+            .select('id, request_id, user_id, repo, description, status, pr_url, pr_number, branch_name, created_at, updated_at')
             .order('created_at', { ascending: false })
             .limit(limit);
 
@@ -817,6 +865,7 @@ app.get('/api/tasks/recent', async (req: Request, res: Response): Promise<any> =
             status:      r.status,
             prUrl:       r.pr_url,
             prNumber:    r.pr_number,
+            branchName:  r.branch_name,
             startedAt:   r.created_at,
             completedAt: r.updated_at,
         }));

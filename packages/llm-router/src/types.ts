@@ -28,6 +28,7 @@ export interface ChatRequest {
   messages: ChatMessage[];
   temperature?: number;  // 0.0–1.0, lower = more deterministic
   maxTokens?: number;
+  jsonMode?: boolean;    // if true, passes response_format:{type:"json_object"} to force JSON output
   requestId?: string;    // propagated into any error thrown, for tracing
 }
 

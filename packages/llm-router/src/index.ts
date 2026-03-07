@@ -63,11 +63,11 @@ async function callProvider(
   const ctx = { role: req.role, provider, model: modelId, requestId: req.requestId };
 
   try {
-    const { messages, temperature, maxTokens } = req;
+    const { messages, temperature, maxTokens, jsonMode } = req;
     switch (provider) {
       case 'venice': return await callVenice(modelId, messages, temperature, maxTokens, timeoutMs);
-      case 'zai': return await callZai(modelId, messages, temperature, maxTokens, timeoutMs);
-      case 'openrouter': return await callOpenRouter(modelId, messages, temperature, maxTokens, timeoutMs);
+      case 'zai': return await callZai(modelId, messages, temperature, maxTokens, timeoutMs, jsonMode);
+      case 'openrouter': return await callOpenRouter(modelId, messages, temperature, maxTokens, timeoutMs, jsonMode);
       default: {
         // TypeScript exhaustiveness check: if a new Provider value is added to
         // the union in types.ts but not handled here, the compiler will error
@@ -134,6 +134,17 @@ export async function chat(req: ChatRequest): Promise<ChatResponse> {
   let lastErr: unknown;
   let attemptsMade = 0;
 
+  // Apply policy-level maxTokens and jsonMode as defaults when the caller hasn't set them.
+  // This allows per-role token budgets and JSON-mode enforcement without requiring every
+  // call site to pass these explicitly.
+  let effectiveReq: ChatRequest = req;
+  if (req.maxTokens === undefined && config.policy.maxTokens !== undefined) {
+    effectiveReq = { ...effectiveReq, maxTokens: config.policy.maxTokens };
+  }
+  if (req.jsonMode === undefined && config.policy.jsonMode !== undefined) {
+    effectiveReq = { ...effectiveReq, jsonMode: config.policy.jsonMode };
+  }
+
   // Retry loop — keeps trying the primary provider while:
   //   (a) the error is listed in fallbackOn (i.e. transient, worth retrying), and
   //   (b) we still have attempts remaining.
@@ -142,11 +153,11 @@ export async function chat(req: ChatRequest): Promise<ChatResponse> {
     attemptsMade = attempt;
     try {
       const t0 = Date.now();
-      const response = await callProvider(config.provider, config.modelId, req, timeoutMs);
+      const response = await callProvider(config.provider, config.modelId, effectiveReq, timeoutMs);
       logUsage({
-        runId: (req as any).runId,
-        requestId: req.requestId,
-        role: req.role,
+        runId: (effectiveReq as any).runId,
+        requestId: effectiveReq.requestId,
+        role: effectiveReq.role,
         provider: response.provider,
         model: response.model,
         tokensUsed: response.tokensUsed,
@@ -158,7 +169,7 @@ export async function chat(req: ChatRequest): Promise<ChatResponse> {
       const retryable = shouldFallback(err, fallbackOn);
       if (!retryable || attempt === maxAttempts) break;
       console.warn(
-        `[llm-router] Attempt ${attempt}/${maxAttempts} failed for role "${req.role}" on ` +
+        `[llm-router] Attempt ${attempt}/${maxAttempts} failed for role "${effectiveReq.role}" on ` +
         `"${config.provider}" — retrying. Reason: ${describeError(err)}`,
       );
     }
@@ -167,15 +178,15 @@ export async function chat(req: ChatRequest): Promise<ChatResponse> {
   // After exhausting retries, try the fallback provider if configured and eligible.
   if (config.fallback && shouldFallback(lastErr, fallbackOn)) {
     console.warn(
-      `[llm-router] Primary "${config.provider}" exhausted for role "${req.role}" — ` +
+      `[llm-router] Primary "${config.provider}" exhausted for role "${effectiveReq.role}" — ` +
       `falling back to "${config.fallback.provider}". Reason: ${describeError(lastErr)}`,
     );
     const t0 = Date.now();
-    const response = await callProvider(config.fallback.provider, config.fallback.modelId, req, timeoutMs);
+    const response = await callProvider(config.fallback.provider, config.fallback.modelId, effectiveReq, timeoutMs);
     logUsage({
-      runId: (req as any).runId,
-      requestId: req.requestId,
-      role: req.role,
+      runId: (effectiveReq as any).runId,
+      requestId: effectiveReq.requestId,
+      role: effectiveReq.role,
       provider: response.provider,
       model: response.model,
       tokensUsed: response.tokensUsed,
@@ -185,7 +196,7 @@ export async function chat(req: ChatRequest): Promise<ChatResponse> {
   }
 
   console.error(
-    `[llm-router] Request failed for role "${req.role}" on provider "${config.provider}" after ` +
+    `[llm-router] Request failed for role "${effectiveReq.role}" on provider "${config.provider}" after ` +
     `${attemptsMade} attempt(s). Error: ${describeError(lastErr)}`,
   );
   throw lastErr;

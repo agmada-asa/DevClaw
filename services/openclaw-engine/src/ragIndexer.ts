@@ -67,9 +67,10 @@ async function upsertEmbedding(
   const { url, key } = getSupabaseConfig();
   if (!url || !key) return;
 
+  // PostgREST expects pgvector values as a string "[x,y,...]"
   await axios.post(
     `${url}/rest/v1/file_embeddings`,
-    { repo, file_path: filePath, content, embedding: JSON.stringify(embedding) },
+    { repo, file_path: filePath, content, embedding: `[${embedding.join(',')}]` },
     {
       headers: {
         apikey: key,

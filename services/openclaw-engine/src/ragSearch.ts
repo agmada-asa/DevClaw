@@ -56,10 +56,14 @@ export async function ragSearch(
   try {
     const embedding = await callZaiEmbedding(query);
 
+    // PostgREST requires pgvector inputs to be sent as a string "[x,y,...]" rather
+    // than a raw JSON array — passing a JS number[] causes a 400 Bad Request.
+    const embeddingStr = `[${embedding.join(',')}]`;
+
     const response = await axios.post(
       `${url}/rest/v1/rpc/match_file_embeddings`,
       {
-        query_embedding: embedding,
+        query_embedding: embeddingStr,
         match_repo: repo,
         match_count: topK,
       },
@@ -82,7 +86,10 @@ export async function ragSearch(
       snippet: r.content.slice(0, 400),
     }));
   } catch (err: any) {
-    console.warn(`[RAG] Search failed for repo=${repo}: ${err?.message}`);
+    const detail = err?.response?.data
+      ? ` — ${JSON.stringify(err.response.data).slice(0, 200)}`
+      : '';
+    console.warn(`[RAG] Search failed for repo=${repo}: ${err?.message}${detail}`);
     return [];
   }
 }

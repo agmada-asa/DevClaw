@@ -83,9 +83,21 @@ export class SandboxTestRunner {
                 };
             }
 
-            // Docker not installed / unavailable — skip gracefully
-            if (err?.code === 'ENOENT' || err?.message?.includes('docker: not found')) {
-                console.warn(`[SandboxRunner] Docker unavailable, skipping sandbox test for runId=${runId}`);
+            // Docker not installed or daemon not running — skip gracefully rather than
+            // treating it as a build failure and discarding valid generated code.
+            const errStderr = (err?.stderr || '').toString();
+            const errMsg = (err?.message || '').toString();
+            const isDockerUnavailable =
+                err?.code === 'ENOENT' ||
+                errMsg.includes('docker: not found') ||
+                errStderr.includes('failed to connect to the docker API') ||
+                errStderr.includes('Cannot connect to the Docker daemon') ||
+                errStderr.includes('Is the docker daemon running') ||
+                errStderr.includes('.colima') ||
+                errStderr.includes('.docker/run/docker.sock') ||
+                errStderr.includes('connect: no such file or directory');
+            if (isDockerUnavailable) {
+                console.warn(`[SandboxRunner] Docker daemon unavailable, skipping sandbox test for runId=${runId}`);
                 return {
                     passed: true,
                     exitCode: 0,
@@ -93,7 +105,7 @@ export class SandboxTestRunner {
                     stderr: '',
                     combinedOutput: '',
                     skipped: true,
-                    skipReason: 'Docker not available',
+                    skipReason: 'Docker daemon not running',
                 };
             }
 

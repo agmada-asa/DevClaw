@@ -291,7 +291,8 @@ export const provisionIsolatedExecutionEnvironment = async (
 
     await mkdir(isolationRoot, { recursive: true });
 
-    const stamp = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
+    // Include milliseconds so simultaneous runs for the same runId don't collide.
+    const stamp = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 17);
     const workspacePath = path.join(isolationRoot, `${input.runId}-${stamp}`);
     const cloneUrl = withGithubToken(normalizeRepoCloneUrl(input.repoFullName), input.githubToken);
     const { branchName, baseBranch } = resolvePreferredExecutionBranch(

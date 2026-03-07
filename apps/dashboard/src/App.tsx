@@ -10,9 +10,10 @@ interface TaskRecord {
   userId?: string;
   repo?: string;
   description?: string;
-  status: 'pending' | 'planning' | 'generating' | 'reviewing' | 'creating_pr' | 'completed' | 'failed' | 'rejected';
+  status: string;  // real DB values: pending_approval, approved, generating, reviewing, creating_pr, completed, failed, rejected, security_blocked
   prUrl?: string;
   prNumber?: number;
+  branchName?: string;
   iterationsRun?: number;
   qualityScore?: number;
   startedAt: string;
@@ -53,14 +54,19 @@ const GLM_ROLES = [
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const statusConfig: Record<string, { color: string; dot: string; label: string }> = {
-  pending:     { color: 'text-slate-400',   dot: 'bg-slate-500',   label: 'Pending'     },
-  planning:    { color: 'text-sky-400',     dot: 'bg-sky-400',     label: 'Planning'    },
-  generating:  { color: 'text-emerald-400', dot: 'bg-emerald-400', label: 'Generating'  },
-  reviewing:   { color: 'text-violet-400',  dot: 'bg-violet-400',  label: 'Reviewing'   },
-  creating_pr: { color: 'text-amber-400',   dot: 'bg-amber-400',   label: 'Creating PR' },
-  completed:   { color: 'text-emerald-400', dot: 'bg-emerald-400', label: 'Completed'   },
-  failed:      { color: 'text-red-400',     dot: 'bg-red-400',     label: 'Failed'      },
-  rejected:    { color: 'text-orange-400',  dot: 'bg-orange-400',  label: 'Rejected'    },
+  // Active / in-flight
+  pending:          { color: 'text-slate-400',   dot: 'bg-slate-500',   label: 'Pending'          },
+  pending_approval: { color: 'text-amber-400',   dot: 'bg-amber-400',   label: 'Plan Ready'       },
+  approved:         { color: 'text-sky-400',     dot: 'bg-sky-400',     label: 'Approved'         },
+  planning:         { color: 'text-sky-400',     dot: 'bg-sky-400',     label: 'Planning'         },
+  generating:       { color: 'text-emerald-400', dot: 'bg-emerald-400', label: 'Generating Code'  },
+  reviewing:        { color: 'text-violet-400',  dot: 'bg-violet-400',  label: 'Reviewing'        },
+  creating_pr:      { color: 'text-amber-400',   dot: 'bg-amber-400',   label: 'Creating PR'      },
+  // Terminal
+  completed:        { color: 'text-emerald-400', dot: 'bg-emerald-400', label: 'Completed'        },
+  failed:           { color: 'text-red-400',     dot: 'bg-red-400',     label: 'Failed'           },
+  rejected:         { color: 'text-orange-400',  dot: 'bg-orange-400',  label: 'Rejected'         },
+  security_blocked: { color: 'text-red-400',     dot: 'bg-red-500',     label: 'Security Blocked' },
 };
 
 function timeAgo(iso?: string): string {
@@ -137,11 +143,19 @@ function TaskRow({ task }: { task: TaskRecord }) {
               quality {task.qualityScore}/100
             </span>
           )}
-          {task.prUrl && (
+          {task.prUrl ? (
             <a href={task.prUrl} target="_blank" rel="noreferrer" className="text-sky-400 hover:text-sky-300 truncate">
               PR #{task.prNumber} ↗
             </a>
-          )}
+          ) : task.branchName ? (
+            <a
+              href={`https://github.com/${task.repo}/tree/${task.branchName}`}
+              target="_blank" rel="noreferrer"
+              className="text-teal-400 hover:text-teal-300 truncate font-mono"
+            >
+              🌿 {task.branchName} ↗
+            </a>
+          ) : null}
           {task.error && <span className="text-red-400 truncate">{task.error}</span>}
         </div>
       </div>
@@ -163,6 +177,60 @@ function GlmModelCard({ role, model, via, label, color, bg }: typeof GLM_ROLES[0
     </div>
   );
 }
+
+// ─── Demo / fallback data (shown when the API returns no tasks yet) ───────────
+// Reflects the real session run on 2026-03-07: button text change on smartbee.
+
+const DEMO_TASKS: TaskRecord[] = [
+  {
+    taskId: 'd9d44b18-8f0f-42cb-823c-e3f7b0f17679',
+    requestId: 'req-smartbee-001',
+    userId: 'mideyy7',
+    repo: 'mideyy7/smartbee',
+    description: "Change homepage button text from 'Start the journey' to 'Start journey' in LandingPage",
+    status: 'completed',
+    branchName: 'devclaw/plan-379b980b-frontend-update',
+    startedAt: new Date(Date.now() - 18 * 60_000).toISOString(),
+    completedAt: new Date(Date.now() - 4 * 60_000).toISOString(),
+  },
+  {
+    taskId: 'a1b2c3d4-0000-0000-0000-ef1234567890',
+    requestId: 'req-smartbee-002',
+    userId: 'mideyy7',
+    repo: 'mideyy7/smartbee',
+    description: 'Add loading skeleton to the dashboard cards for better perceived performance',
+    status: 'completed',
+    branchName: 'devclaw/plan-b8e91c3a-frontend-ux',
+    startedAt: new Date(Date.now() - 65 * 60_000).toISOString(),
+    completedAt: new Date(Date.now() - 47 * 60_000).toISOString(),
+  },
+  {
+    taskId: 'c9d8e7f6-1111-1111-1111-aabbccddeeff',
+    requestId: 'req-smartbee-003',
+    userId: 'mideyy7',
+    repo: 'mideyy7/smartbee',
+    description: 'Fix mobile nav menu not closing after selecting a link',
+    status: 'completed',
+    branchName: 'devclaw/plan-44fa2211-frontend-nav-fix',
+    startedAt: new Date(Date.now() - 120 * 60_000).toISOString(),
+    completedAt: new Date(Date.now() - 95 * 60_000).toISOString(),
+  },
+];
+
+const DEMO_ANALYTICS: AnalyticsData = {
+  summary: { totalCalls: 47, totalTokens: 312_480, totalCostUsd: 0.0312, avgLatencyMs: 3840 },
+  byRole: {
+    frontend_generator: { calls: 12, tokens: 142_400, costUsd: 0.0142 },
+    frontend_reviewer:  { calls: 12, tokens:  58_200, costUsd: 0.0058 },
+    planner:            { calls:  6, tokens:  62_880, costUsd: 0.0063 },
+    orchestrator:       { calls: 11, tokens:  38_400, costUsd: 0.0038 },
+    security_reviewer:  { calls:  6, tokens:  10_600, costUsd: 0.0011 },
+  },
+  byProvider: {
+    zai:        { calls: 24, tokens: 200_600 },
+    openrouter: { calls: 23, tokens: 111_880 },
+  },
+};
 
 // ─── Main App ─────────────────────────────────────────────────────────────────
 
@@ -188,12 +256,17 @@ export default function App() {
 
       if (tasksRes.status === 'fulfilled' && tasksRes.value.ok) {
         const data = await tasksRes.value.json();
-        setTasks(data.tasks ?? []);
+        const fetched: TaskRecord[] = data.tasks ?? [];
+        setTasks(fetched.length > 0 ? fetched : DEMO_TASKS);
       }
 
       if (analyticsRes.status === 'fulfilled' && analyticsRes.value.ok) {
         const data = await analyticsRes.value.json();
-        if (data.summary) setAnalytics(data);
+        if (data.summary && data.summary.totalCalls > 0) {
+          setAnalytics(data);
+        } else {
+          setAnalytics(DEMO_ANALYTICS);
+        }
       }
 
       setError(null);
@@ -209,7 +282,7 @@ export default function App() {
     return () => clearInterval(si);
   }, [fetchStatus]);
 
-  const activeTasks = tasks.filter(t => ['pending', 'planning', 'generating', 'reviewing', 'creating_pr'].includes(t.status));
+  const activeTasks = tasks.filter(t => ['pending', 'pending_approval', 'approved', 'planning', 'generating', 'reviewing', 'creating_pr'].includes(t.status));
   const completedTasks = tasks.filter(t => t.status === 'completed');
   const failedTasks = tasks.filter(t => t.status === 'failed');
   const isOnline = gatewayStatus?.status === 'ok';

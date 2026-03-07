@@ -9,6 +9,7 @@ export async function callOpenRouter(
     temperature = 0.2,
     maxTokens?: number,
     timeoutMs?: number,
+    jsonMode?: boolean,
 ): Promise<ChatResponse> {
     const apiKey = process.env.OPENROUTER_API_KEY;
     if (!apiKey) throw new Error('[llm-router] OPENROUTER_API_KEY is not set');
@@ -21,6 +22,9 @@ export async function callOpenRouter(
     };
     if (maxTokens) {
         payload.max_tokens = maxTokens;
+    }
+    if (jsonMode) {
+        payload.response_format = { type: 'json_object' };
     }
 
     let response: any;

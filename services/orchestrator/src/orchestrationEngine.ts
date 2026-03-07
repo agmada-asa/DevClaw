@@ -47,6 +47,8 @@ export interface ExecuteInput {
     executionSubTasks?: ExecutionSubTask[];
     isolatedEnvironmentPath?: string;
     executionBranchName?: string;
+    progressChatId?: string;
+    progressBotUrl?: string;
 }
 
 export interface ExecuteResult {
@@ -99,6 +101,8 @@ class LegacyExecutionEngine {
             executionSubTasks: input.executionSubTasks,
             isolatedEnvironmentPath: input.isolatedEnvironmentPath,
             executionBranchName: input.executionBranchName,
+            progressChatId: input.progressChatId,
+            progressBotUrl: input.progressBotUrl,
         }, {
             timeout: ORCHESTRATOR_EXECUTE_TIMEOUT_MS,
         });
@@ -181,6 +185,8 @@ class OpenClawExecutionEngine {
             executionSubTasks: input.executionSubTasks,
             isolatedEnvironmentPath: input.isolatedEnvironmentPath,
             executionBranchName: input.executionBranchName,
+            progressChatId: input.progressChatId,
+            progressBotUrl: input.progressBotUrl,
             source: 'orchestrator',
         }, {
             timeout: ORCHESTRATOR_EXECUTE_TIMEOUT_MS,

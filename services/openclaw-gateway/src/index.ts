@@ -112,27 +112,38 @@ const postToOrchestrator = async <T>(
 
 // OAuth Init Endpoint
 app.get('/api/auth/github', (req: Request, res: Response): any => {
-    const userId = req.query.userId as string;
-    const provider = req.query.provider as string;
-    const chatId = req.query.chatId as string;
-
-    if (!userId || !provider) {
-        return res.status(400).json({ error: 'Missing userId or provider' });
-    }
-
-    // Encode chatId in state so we can send a proactive message after auth
-    const state = Buffer.from(JSON.stringify({ userId, provider, chatId })).toString('base64');
     const clientId = process.env.GITHUB_CLIENT_ID;
-
     if (!clientId) {
         return res.status(500).json({ error: 'GitHub OAuth not configured on the server' });
     }
 
-    const redirectUri = `${req.protocol}://${req.get('host')}/api/auth/github/callback`;
-    // Request 'repo' scope to create issues and read repos
-    const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=repo&state=${state}`;
+    // Accept pre-encoded opaque state from bots (s=<base64>) OR legacy explicit params
+    let state: string;
+    if (req.query.s) {
+        state = req.query.s as string;
+        try {
+            const decoded = JSON.parse(Buffer.from(state, 'base64').toString('utf-8'));
+            if (!decoded.userId || !decoded.provider) throw new Error('missing fields');
+        } catch {
+            return res.status(400).json({ error: 'Invalid state parameter' });
+        }
+    } else {
+        const userId = req.query.userId as string;
+        const provider = req.query.provider as string;
+        const chatId = (req.query.chatId as string) || userId;
+        if (!userId || !provider) {
+            return res.status(400).json({ error: 'Missing userId or provider' });
+        }
+        state = Buffer.from(JSON.stringify({ userId, provider, chatId })).toString('base64');
+    }
 
-    res.redirect(githubAuthUrl);
+    // GITHUB_CALLBACK_URL must exactly match what is registered in your GitHub OAuth app.
+    // If unset, redirect_uri is omitted and GitHub falls back to the app's registered default.
+    const redirectUri = process.env.GITHUB_CALLBACK_URL?.replace(/\/+$/, '');
+    const params = new URLSearchParams({ client_id: clientId, scope: 'repo', state });
+    if (redirectUri) params.set('redirect_uri', redirectUri);
+
+    res.redirect(`https://github.com/login/oauth/authorize?${params}`);
 });
 
 // OAuth Callback Endpoint

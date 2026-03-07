@@ -651,6 +651,63 @@ describe('ExecutionStageManager', () => {
         expect(gitCalls.some((call) => call.args[0] === 'add')).toBe(true);
     });
 
+    it('extracts file rewrites from JSON-like output with unescaped multiline content strings', async () => {
+        const gitCalls: GitCommandCall[] = [];
+        const gitState: MockGitState = {
+            branch: 'devclaw/fix-plan-123',
+            head: 'base-commit',
+            commitCount: 0,
+        };
+        const runGit = createRunGitMock(gitCalls, gitState);
+
+        const frontendFactory: AgentPairFactory = {
+            createPair: () => ({
+                domain: 'frontend',
+                agent: 'Frontend',
+                generator: {
+                    name: 'FrontendGenerator',
+                    run: async () => ({
+                        content: `{"summary":"Change CTA text color","notes":[],"files":[{"path":"apps/web/src/App.tsx","content":"import React from 'react';
+export default function App() {
+  return <button className='text-white'>Start the journey</button>;
+}"}]}`,
+                        model: 'glm-4.7-flash',
+                        provider: 'zai',
+                    }),
+                },
+                reviewer: {
+                    name: 'FrontendReviewer',
+                    run: async () => ({
+                        decision: 'APPROVED',
+                        notes: ['Ready'],
+                        content: '{"decision":"APPROVED","notes":["Ready"]}',
+                        model: 'glm-4.7',
+                        provider: 'zai',
+                    }),
+                },
+            }),
+        };
+
+        const registry = new AgentPairFactoryRegistry({
+            frontendFactory,
+            backendFactory: createFactory(
+                'BackendGenerator',
+                'BackendReviewer',
+                ['APPROVED'],
+                'services/api/src/handler.ts',
+                []
+            ),
+        });
+        const manager = new ExecutionStageManager(registry, runGit as any, 3, 8_000, 10, true);
+
+        const result = await manager.run(createPayload(workspacePath, [
+            createSubTask('plan-frontend', 'frontend', 'apps/web/src/App.tsx'),
+        ]));
+
+        expect(result?.approvedPatchSet.subTasks).toHaveLength(1);
+        expect(gitCalls.some((call) => call.args[0] === 'add')).toBe(true);
+    });
+
     it('does not force backend rewrite when reviewer approves and staged diff is empty', async () => {
         const gitCalls: GitCommandCall[] = [];
         const gitState: MockGitState = {

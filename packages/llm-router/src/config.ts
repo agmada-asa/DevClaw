@@ -11,6 +11,8 @@ export interface RolePolicy {
   timeoutMs: number;              // per-call axios timeout
   maxRetries: number;             // retries on primary before giving up / falling back
   fallbackOn: FallbackTrigger[];  // error types that are eligible for retry + fallback
+  maxTokens?: number;             // max tokens to request from the provider (overrides provider default)
+  jsonMode?: boolean;             // if true, forces response_format:{type:"json_object"} on the provider call
 }
 
 // For each role, defines which provider + model to call,
@@ -56,6 +58,12 @@ const GENERATOR_POLICY: RolePolicy = {
   timeoutMs: 1200_000,
   maxRetries: 2,
   fallbackOn: ['timeout', 'http5xx', 'http429'],
+  // GLM-4.7-Flash uses two-phase streaming: reasoning_content (CoT) then content (answer).
+  // With the default 4096 tokens, the model exhausts its budget in the thinking phase and
+  // never produces delta.content. 16384 gives enough room for both phases.
+  maxTokens: 16384,
+  // Force JSON output via response_format so the model doesn't emit markdown analysis text.
+  jsonMode: true,
 };
 
 const REVIEWER_POLICY: RolePolicy = {
