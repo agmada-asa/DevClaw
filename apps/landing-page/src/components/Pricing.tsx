@@ -94,14 +94,14 @@ export default function Pricing() {
               ))}
             </div>
 
-            {/* CEOClaw callout */}
+            {/* Z.AI GLM callout */}
             <div className="bg-gray-950 rounded-2xl p-6 text-white">
-              <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Also included</p>
-              <p className="font-bold text-lg">CEOClaw Founder Layer</p>
+              <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Powered by</p>
+              <p className="font-bold text-lg">Z.AI GLM Series</p>
               <p className="text-sm text-gray-400 mt-2 leading-relaxed">
-                DevClaw markets and sells itself. The same agent system that fixes your code also writes landing pages, finds prospects, and processes subscriptions.
+                Three specialised GLM models handle different cognitive tasks — planning, generation, and review — each matched to the right level of reasoning depth.
               </p>
-              <span className="mt-3 inline-block text-xs text-red-400 font-semibold">DevClaw is its own first customer →</span>
+              <span className="mt-3 inline-block text-xs text-red-400 font-semibold">GLM-4.7-flash · GLM-4.7 · glm-z1 →</span>
             </div>
           </div>
         </div>

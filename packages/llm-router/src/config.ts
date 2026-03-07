@@ -142,25 +142,4 @@ export const MODEL_CONFIG: Record<ModelRole, ModelConfig> = {
     policy: LONGCTX_POLICY,
   },
 
-  // ── CEOClaw: autonomous founder agent ────────────────────────────────────────
-  // prospect_qualifier uses glm-z1-flash reasoning to score company fit
-  // outreach_writer uses glm-4.7-flash for personalised message generation
-
-  prospect_qualifier: {
-    provider: 'openrouter',
-    modelId: process.env.QUALIFIER_MODEL || OR_REASONING_MODEL,
-    fallback: { provider: 'zai', modelId: ZAI_FLASH_MODEL },
-    policy: REASONING_POLICY,
-  },
-
-  outreach_writer: {
-    provider: 'zai',
-    modelId: ZAI_FLASH_MODEL,
-    fallback: { provider: 'openrouter', modelId: OR_FLASH_FALLBACK },
-    policy: {
-      timeoutMs: 120_000,
-      maxRetries: 1,
-      fallbackOn: ['timeout', 'http5xx', 'http429'],
-    },
-  },
 };

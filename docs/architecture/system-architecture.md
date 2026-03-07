@@ -1,6 +1,6 @@
 # System Architecture
 
-This architecture is optimized for the hackathon requirement: one reliable end-to-end path from chat request to merged-quality PR, with a separate CEOClaw revenue loop.
+This architecture is optimized for the hackathon requirement: one reliable end-to-end path from chat request to merged-quality PR.
 
 ## Layered View
 
@@ -17,12 +17,7 @@ This architecture is optimized for the hackathon requirement: one reliable end-t
 - `services/integration-verifier`
 - `services/report-generator`
 
-4. Founder Layer
-- `services/ceoclaw-founder`
-- `services/billing-webhooks`
-- `apps/landing-page`
-
-5. Shared Platform Layer
+4. Shared Platform Layer
 - `packages/contracts`
 - `packages/llm-router`
 - `packages/memory`
@@ -58,10 +53,7 @@ flowchart LR
   ARUN --> OBS
   PLAN --> OBS
 
-  CFOUND[services/ceoclaw-founder] --> LAND[apps/landing-page]
-  CFOUND --> BILL[services/billing-webhooks]
-  BILL --> DASH[apps/dashboard]
-  ORCH --> DASH
+  ORCH --> DASH[apps/dashboard]
 ```
 
 ## Core Request Lifecycle (Must Ship)
@@ -120,10 +112,6 @@ sequenceDiagram
 
 - `report-generator`
   - Creates PR description, changelog entries, and user-facing summary.
-
-- `ceoclaw-founder`
-  - Independent growth loop: leads, outreach content, landing updates.
-  - Publishes metrics only via typed contracts; isolated from code execution path.
 
 ## Runtime Rules
 

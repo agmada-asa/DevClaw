@@ -35,9 +35,9 @@ Deliver one production-like flow that judges can follow end-to-end in 4 minutes 
 - `apps/dashboard`
 
 4. Day 6-7
-- `services/ceoclaw-founder`
-- `services/billing-webhooks`
 - `apps/landing-page`
+- `apps/dashboard` (DevClaw monitor)
+- Demo polish + README
 
 ## Demo-Critical Reliability Controls
 
