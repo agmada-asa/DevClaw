@@ -122,7 +122,7 @@ export const handleMessage = async (message: any) => {
 
     if (!isTaskRequest && !isRepoLinkRequest && !isReposListRequest && !isStatusRequest &&
         !isApproveRequest && !isRejectRequest && !isRefineRequest && !isAmendRequest) {
-        return message.reply(`I didn't understand that.\n\nUse /help to see available commands, or /task [description] to create a new task.`);
+        return message.reply(`I didn't understand that. 🤔\n\nUse /help to see available commands, or /task [description] to create a new task.`);
     }
 
     try {

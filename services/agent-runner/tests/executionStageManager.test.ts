@@ -11,6 +11,36 @@ import {
 import { ExecutionStageManager } from '../src/executionStageManager';
 import { ExecutePayload, ExecutionSubTask } from '../src/executionPlugin';
 
+// ── Mock new production modules so tests don't require real API keys or Docker ─
+jest.mock('../src/securityReviewer', () => ({
+    SecurityReviewAgent: jest.fn().mockImplementation(() => ({
+        scan: jest.fn().mockResolvedValue({
+            passed: true,
+            vulnerabilities: [],
+            summary: 'No vulnerabilities found (mocked)',
+            model: 'glm-4.7',
+            provider: 'openrouter',
+        }),
+    })),
+    SecurityVulnerabilityError: class SecurityVulnerabilityError extends Error {
+        constructor(public result: unknown, public runId: string) { super('security_blocked'); }
+    },
+}));
+
+jest.mock('../src/sandboxRunner', () => ({
+    SandboxTestRunner: jest.fn().mockImplementation(() => ({
+        run: jest.fn().mockResolvedValue({
+            passed: true,
+            exitCode: 0,
+            stdout: '',
+            stderr: '',
+            combinedOutput: '',
+            skipped: true,
+            skipReason: 'Mocked in tests',
+        }),
+    })),
+}));
+
 interface GitCommandCall {
     args: string[];
     cwd: string;
