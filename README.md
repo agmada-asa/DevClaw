@@ -1,6 +1,6 @@
 # DevClaw
 
-> **Send a WhatsApp message. Get a GitHub pull request.**
+> **Send a WhatsApp/Telegram message. Get a GitHub pull request.**
 > No IDE. No manual steps. No waiting.
 
 DevClaw is a **production-ready multi-agent AI system** that turns a plain-English task description into reviewed, security-scanned, committed code on a GitHub branch — delivered back to you via WhatsApp or Telegram.
