@@ -90,7 +90,7 @@ User receives: "Code is ready! Branch: devclaw/plan-abc123"
 
 ---
 
-## Five Production-Grade Features
+## Production-Grade Features
 
 ### 1. Agentic Generator -> Reviewer Loop
 The Generator and Reviewer are separate GLM-4.7-Flash instances. The Reviewer's notes are injected into the next Generator prompt — the model self-corrects across up to 3 iterations before giving up.
@@ -350,12 +350,3 @@ Services start on:
 
 ---
 
-## Z.AI Track — Why DevClaw Qualifies
-
-| Requirement | How DevClaw delivers |
-|---|---|
-| Z.AI GLM models as core component | 7 distinct agent roles, all running GLM variants — nothing works without Z.AI |
-| Meaningful GLM usage across capabilities | Coding, reasoning, orchestration, security analysis, and semantic embedding — all 5 |
-| Working prototype, live demo preferred | Fully deployed, runs against real GitHub repos, produces real pull requests |
-| Production-ready | Retry logic, fallback routing, idempotent execution, security gate, usage telemetry |
-| Beyond a simple demo | Autonomous end-to-end pipeline: plan -> approve -> generate -> review -> test -> secure -> push -> notify |
