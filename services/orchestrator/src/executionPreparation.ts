@@ -274,7 +274,7 @@ export const buildExecutionSubTasks = (plan?: ArchitecturePlan): ExecutionSubTas
             objective: plan.summary,
             files: asUnique(
                 hasDomainFiles
-                    ? [...filesByDomain[domain], ...unknownFiles]
+                    ? [...filesByDomain[domain]]
                     : [...plan.affectedFiles]
             ),
             generator: domainAssignment?.generator || `${domain}-generator`,

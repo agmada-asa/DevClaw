@@ -370,8 +370,8 @@ const decodeLooseFileContent = (value: string): string =>
 
 const findLooseContentTerminatorOffset = (text: string): number => {
     const patterns = [
-        /"\s*}\s*,\s*{/,
-        /"\s*}\s*]\s*,\s*"/,
+        /"\s*}\s*,\s*{\s*"path"\s*:/,
+        /"\s*}\s*]\s*,\s*"(?:notes|summary|writeFiles|patch)"\s*:/,
         /"\s*}\s*]\s*}/,
     ];
 
@@ -635,6 +635,22 @@ const joinScopedArgs = (baseArgs: string[], files: string[]): string[] => {
     return [...baseArgs, '--', ...scopedFiles];
 };
 
+const normalizeRelativeFilePath = (value: string): string =>
+    value.trim().replace(/^\.\/+/, '').replace(/^\/+/, '');
+
+const findMissingTargetFiles = (expectedFiles: string[], actualFiles: string[]): string[] => {
+    const actual = new Set(
+        actualFiles
+            .map(normalizeRelativeFilePath)
+            .filter(Boolean)
+    );
+
+    return expectedFiles
+        .map(normalizeRelativeFilePath)
+        .filter(Boolean)
+        .filter((filePath) => !actual.has(filePath));
+};
+
 export class ExecutionStageManager {
     constructor(
         private readonly registry: AgentPairFactoryRegistry = new AgentPairFactoryRegistry(),
@@ -875,6 +891,30 @@ export class ExecutionStageManager {
                 continue;
             }
 
+            const stagedFiles = await this.listStagedFiles(workspacePath);
+            const existingTargetFiles = await this.listExistingFiles(workspacePath, subTask.files);
+            const missingTargetFiles = findMissingTargetFiles(
+                existingTargetFiles,
+                [
+                    ...generatedRewrites.map((rewrite) => rewrite.path),
+                    ...stagedFiles,
+                ]
+            );
+
+            if (missingTargetFiles.length > 0) {
+                reviewerNotes = [
+                    `Generator omitted required target files: ${missingTargetFiles.join(', ')}`,
+                    'Regenerate the full files[] array and include every target file assigned to this sub-task.',
+                ];
+                finalDecision = 'REWRITE';
+                console.warn(
+                    `[AgentRunner][ExecutionStage] subTask=${subTask.id} iteration=${iteration} ` +
+                    `missing target files after apply: ${missingTargetFiles.join(', ')}`
+                );
+                await this.discardWorkingChanges(workspacePath);
+                continue;
+            }
+
             const workspaceDiff = subTask.domain === 'backend'
                 ? ''
                 : await this.readStagedDiff(workspacePath, subTask.files);
@@ -928,7 +968,6 @@ export class ExecutionStageManager {
             );
 
             if (review.decision === 'APPROVED') {
-                const stagedFiles = await this.listStagedFiles(workspacePath);
                 if (stagedFiles.length === 0) {
                     if (subTask.domain === 'backend') {
                         console.log(
@@ -1074,6 +1113,30 @@ export class ExecutionStageManager {
             }
         }
         return snapshots;
+    }
+
+    private async listExistingFiles(
+        workspacePath: string,
+        files: string[]
+    ): Promise<string[]> {
+        const existing: string[] = [];
+        for (const rawFilePath of files) {
+            const filePath = rawFilePath.trim();
+            if (!filePath) {
+                continue;
+            }
+            const resolved = this.resolveWorkspacePath(workspacePath, filePath);
+            try {
+                await access(resolved, fsConstants.F_OK);
+                existing.push(filePath);
+            } catch (err: any) {
+                if (err?.code === 'ENOENT') {
+                    continue;
+                }
+                throw new Error(`Failed to inspect target file "${filePath}": ${formatLoopError(err)}`);
+            }
+        }
+        return existing;
     }
 
     private resolveWorkspacePath(workspacePath: string, filePath: string): string {

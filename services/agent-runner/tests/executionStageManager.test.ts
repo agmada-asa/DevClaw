@@ -337,6 +337,140 @@ describe('ExecutionStageManager', () => {
         expect(gitCalls.some((call) => call.args[0] === 'push')).toBe(false);
     });
 
+    it('rejects a frontend rewrite when the generator omits an existing planned CSS file', async () => {
+        const gitCalls: GitCommandCall[] = [];
+        const gitState: MockGitState = {
+            branch: 'devclaw/fix-plan-123',
+            head: 'base-commit',
+            commitCount: 0,
+        };
+        const runGit = createRunGitMock(gitCalls, gitState);
+        await writeFile(path.join(workspacePath, 'apps/web/src/styles.css'), '.page {}\n', 'utf8');
+
+        const frontendFactory: AgentPairFactory = {
+            createPair: () => ({
+                domain: 'frontend',
+                agent: 'Frontend',
+                generator: {
+                    name: 'FrontendGenerator',
+                    run: async () => ({
+                        content: JSON.stringify({
+                            summary: 'Update portfolio page',
+                            files: [
+                                {
+                                    path: 'apps/web/src/App.tsx',
+                                    content: 'after\n',
+                                },
+                            ],
+                            notes: ['Updated only App.tsx'],
+                        }),
+                        model: 'glm-4.7-flash',
+                        provider: 'zai',
+                    }),
+                },
+                reviewer: {
+                    name: 'FrontendReviewer',
+                    run: async () => ({
+                        decision: 'APPROVED',
+                        notes: ['Looks good'],
+                        content: '{"decision":"APPROVED","notes":["Looks good"]}',
+                        model: 'glm-4.7',
+                        provider: 'zai',
+                    }),
+                },
+            }),
+        };
+
+        const registry = new AgentPairFactoryRegistry({
+            frontendFactory,
+            backendFactory: createFactory(
+                'BackendGenerator',
+                'BackendReviewer',
+                ['APPROVED'],
+                'services/api/src/handler.ts',
+                []
+            ),
+        });
+
+        const manager = new ExecutionStageManager(registry, runGit as any, 2, 8_000, 10, true);
+        const result = await manager.run(createPayload(workspacePath, [{
+            ...createSubTask('plan-frontend', 'frontend', 'apps/web/src/App.tsx'),
+            files: ['apps/web/src/App.tsx', 'apps/web/src/styles.css'],
+        }]));
+
+        expect(result?.agentLoopReport.approvedSubTasks).toBe(0);
+        expect(result?.agentLoopReport.subTasks[0].reviewerNotes).toContain(
+            'Generator omitted required target files: apps/web/src/styles.css'
+        );
+        expect(result?.approvedPatchSet).toBeUndefined();
+        expect(gitCalls.some((call) => call.args[0] === 'push')).toBe(false);
+    });
+
+    it('does not reject a frontend rewrite when omitted planned files do not exist yet', async () => {
+        const gitCalls: GitCommandCall[] = [];
+        const gitState: MockGitState = {
+            branch: 'devclaw/fix-plan-123',
+            head: 'base-commit',
+            commitCount: 0,
+        };
+        const runGit = createRunGitMock(gitCalls, gitState);
+
+        const frontendFactory: AgentPairFactory = {
+            createPair: () => ({
+                domain: 'frontend',
+                agent: 'Frontend',
+                generator: {
+                    name: 'FrontendGenerator',
+                    run: async () => ({
+                        content: JSON.stringify({
+                            summary: 'Create a single-file portfolio page',
+                            files: [
+                                {
+                                    path: 'apps/web/src/App.tsx',
+                                    content: 'after\n',
+                                },
+                            ],
+                            notes: ['Inlined styles and did not add README'],
+                        }),
+                        model: 'glm-4.7-flash',
+                        provider: 'zai',
+                    }),
+                },
+                reviewer: {
+                    name: 'FrontendReviewer',
+                    run: async () => ({
+                        decision: 'APPROVED',
+                        notes: ['Looks good'],
+                        content: '{"decision":"APPROVED","notes":["Looks good"]}',
+                        model: 'glm-4.7',
+                        provider: 'zai',
+                    }),
+                },
+            }),
+        };
+
+        const registry = new AgentPairFactoryRegistry({
+            frontendFactory,
+            backendFactory: createFactory(
+                'BackendGenerator',
+                'BackendReviewer',
+                ['APPROVED'],
+                'services/api/src/handler.ts',
+                []
+            ),
+        });
+
+        const manager = new ExecutionStageManager(registry, runGit as any, 2, 8_000, 10, true);
+        const result = await manager.run(createPayload(workspacePath, [{
+            ...createSubTask('plan-frontend', 'frontend', 'apps/web/src/App.tsx'),
+            files: ['apps/web/src/App.tsx', 'portfolio.css', 'README.md'],
+        }]));
+
+        expect(result?.agentLoopReport.approvedSubTasks).toBe(1);
+        expect(result?.approvedPatchSet?.subTasks).toHaveLength(1);
+        expect(result?.agentLoopReport.subTasks[0].finalDecision).toBe('APPROVED');
+    });
+
     it('handles unborn HEAD by using empty tree and fallback reset', async () => {
         const gitCalls: GitCommandCall[] = [];
         const gitState: MockGitState = {
@@ -902,6 +1036,105 @@ describe('ExecutionStageManager', () => {
                 '</body>',
                 '</html>',
             ].join('\n')
+        );
+    });
+
+    it('extracts every planned rewrite when malformed JSON file content contains object literals', async () => {
+        const gitCalls: GitCommandCall[] = [];
+        const gitState: MockGitState = {
+            branch: 'devclaw/fix-plan-123',
+            head: 'base-commit',
+            commitCount: 0,
+        };
+        const runGit = createRunGitMock(gitCalls, gitState);
+
+        const frontendFactory: AgentPairFactory = {
+            createPair: () => ({
+                domain: 'frontend',
+                agent: 'Frontend',
+                generator: {
+                    name: 'FrontendGenerator',
+                    run: async () => ({
+                        content: [
+                            '{',
+                            '  "summary": "Create portfolio site",',
+                            '  "files": [',
+                            '    {',
+                            '      "path": "apps/web/src/App.tsx",',
+                            '      "content": "const projects = [',
+                            '  {',
+                            '    title: "Portfolio",',
+                            '  },',
+                            '  {',
+                            '    title: "CLI",',
+                            '  },',
+                            '];',
+                            '',
+                            'export default function App() {',
+                            '  return <main>{projects.length}</main>;',
+                            '}"',
+                            '    },',
+                            '    {',
+                            '      "path": "apps/web/src/portfolio.css",',
+                            '      "content": ".page {',
+                            '  font-family: \\"Space Grotesk\\", sans-serif;',
+                            '}"',
+                            '    },',
+                            '    {',
+                            '      "path": "README.md",',
+                            '      "content": "# Portfolio',
+                            '',
+                            'Generated by DevClaw.',
+                            '"',
+                            '    }',
+                            '  ],',
+                            '  "notes": ["Updated all planned files"]',
+                            '}',
+                        ].join('\n'),
+                        model: 'glm-4.7-flash',
+                        provider: 'zai',
+                    }),
+                },
+                reviewer: {
+                    name: 'FrontendReviewer',
+                    run: async () => ({
+                        decision: 'APPROVED',
+                        notes: ['Ready'],
+                        content: '{"decision":"APPROVED","notes":["Ready"]}',
+                        model: 'glm-4.7',
+                        provider: 'zai',
+                    }),
+                },
+            }),
+        };
+
+        const registry = new AgentPairFactoryRegistry({
+            frontendFactory,
+            backendFactory: createFactory(
+                'BackendGenerator',
+                'BackendReviewer',
+                ['APPROVED'],
+                'services/api/src/handler.ts',
+                []
+            ),
+        });
+        const manager = new ExecutionStageManager(registry, runGit as any, 3, 8_000, 10, true);
+
+        const result = await manager.run(createPayload(workspacePath, [{
+            ...createSubTask('plan-frontend', 'frontend', 'apps/web/src/App.tsx'),
+            files: ['apps/web/src/App.tsx', 'apps/web/src/portfolio.css', 'README.md'],
+        }]));
+
+        expect(result?.approvedPatchSet?.subTasks).toHaveLength(1);
+        expect(result?.agentLoopReport.approvedSubTasks).toBe(1);
+        await expect(readFile(path.join(workspacePath, 'apps/web/src/App.tsx'), 'utf8')).resolves.toContain(
+            'title: "CLI"'
+        );
+        await expect(readFile(path.join(workspacePath, 'apps/web/src/portfolio.css'), 'utf8')).resolves.toContain(
+            'font-family: "Space Grotesk", sans-serif;'
+        );
+        await expect(readFile(path.join(workspacePath, 'README.md'), 'utf8')).resolves.toContain(
+            'Generated by DevClaw.'
         );
     });
 
