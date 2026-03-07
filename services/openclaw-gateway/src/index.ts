@@ -523,28 +523,6 @@ app.get('/health', (req: Request, res: Response) => {
     res.status(200).json({ status: 'ok' });
 });
 
-// ─── Proxy: recent tasks (for dashboard) ─────────────────────────────────────
-app.get('/api/tasks/recent', async (req: Request, res: Response): Promise<any> => {
-    const orchestratorUrl = (process.env.ORCHESTRATOR_URL || 'http://localhost:3010').replace(/\/$/, '');
-    try {
-        const limit = Number.parseInt((req.query.limit as string) || '20', 10);
-        const orchRes = await axios.get(`${orchestratorUrl}/api/tasks/recent?limit=${limit}`, { timeout: 15_000 });
-        return res.status(200).json(orchRes.data);
-    } catch {
-        return res.status(200).json({ tasks: [] });
-    }
-});
-
-// ─── Proxy: analytics (for dashboard) ────────────────────────────────────────
-app.get('/api/analytics', async (_req: Request, res: Response): Promise<any> => {
-    const orchestratorUrl = (process.env.ORCHESTRATOR_URL || 'http://localhost:3010').replace(/\/$/, '');
-    try {
-        const orchRes = await axios.get(`${orchestratorUrl}/api/analytics`, { timeout: 15_000 });
-        return res.status(200).json(orchRes.data);
-    } catch (err: any) {
-        return res.status(503).json({ error: 'Analytics unavailable' });
-    }
-});
 
 // Only start the server if not imported as a module (useful for testing)
 if (require.main === module) {

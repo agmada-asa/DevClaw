@@ -113,7 +113,6 @@ Before planning, DevClaw embeds all repo files with Z.AI `embedding-3` and store
 
 ```
 apps/
-  dashboard/        Real-time monitoring: task history, GLM usage analytics, cost tracking
   landing-page/     Marketing site (React + Vite + Tailwind)
   telegram-bot/     Telegram intake + proactive push notifications
   whatsapp-bot/     WhatsApp intake + proactive push notifications
@@ -136,17 +135,6 @@ docs/
   architecture/     System design, API contracts, scope decisions
   runbooks/         Demo checklist, debugging guide
 ```
-
----
-
-## Monitoring Dashboard
-
-`apps/dashboard/` connects to the live gateway and shows:
-
-- Active / completed / failed task counts with live status (refreshes every 5s)
-- **GLM Usage Analytics** — total tokens, estimated USD cost, calls broken down by role and provider
-- Task history with real status labels: `pending_approval`, `generating`, `security_blocked`, `completed`
-- Clickable branch links before a PR exists, PR links after
 
 ---
 
@@ -176,7 +164,7 @@ What it handles:
 - **JSON mode** — passes `response_format: { type: "json_object" }` on generator roles to enforce structured output
 - **Per-role token budgets** — generators get 16,384 tokens (enough for CoT + full file rewrites)
 - **Retry + fallback** — transient failures (timeout, 5xx, 429) retry on primary, then fall back to the next GLM variant
-- **Usage logging** — every call is written to `llm_usage_logs` in Supabase with token count, latency, and estimated USD cost
+- **Usage logging** — every call is written to `llm_usage_logs` in Supabase with token count and latency for post-hoc debugging
 
 ---
 
@@ -317,7 +305,7 @@ $$;
 # All services
 npm run dev
 
-# Core backend only (no dashboard/landing page)
+# Core backend only (no landing page)
 npm run dev:servers
 ```
 
@@ -326,7 +314,6 @@ Services start on:
 - Orchestrator: `http://localhost:3010`
 - OpenClaw Engine: `http://localhost:3040`
 - Agent Runner: `http://localhost:3030`
-- Dashboard: `http://localhost:5173`
 
 ---
 
@@ -357,7 +344,7 @@ Services start on:
 | **Vector Search** | Supabase pgvector + Z.AI embedding-3 |
 | **Version Control** | GitHub REST API via Octokit (issues, branches, commits, PRs) |
 | **Backend** | Node.js 22 + Express + TypeScript |
-| **Frontend** | React + Vite + Tailwind CSS |
+| **Frontend** | React + Vite + Tailwind CSS (landing page) |
 | **Database** | Supabase (PostgreSQL + pgvector) |
 | **Monorepo** | Turborepo + npm workspaces |
 
@@ -370,5 +357,5 @@ Services start on:
 | Z.AI GLM models as core component | 7 distinct agent roles, all running GLM variants — nothing works without Z.AI |
 | Meaningful GLM usage across capabilities | Coding, reasoning, orchestration, security analysis, and semantic embedding — all 5 |
 | Working prototype, live demo preferred | Fully deployed, runs against real GitHub repos, produces real pull requests |
-| Production-ready | Retry logic, fallback routing, idempotent execution, security gate, observability dashboard |
+| Production-ready | Retry logic, fallback routing, idempotent execution, security gate, usage telemetry |
 | Beyond a simple demo | Autonomous end-to-end pipeline: plan -> approve -> generate -> review -> test -> secure -> push -> notify |
