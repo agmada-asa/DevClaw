@@ -99,7 +99,7 @@ export default function LinksPage({ onBack }: Props) {
       </div>
 
       <p className="mt-6 text-xs text-white/20 text-center">
-        Built at UK AI Agent Hack EP4 · OpenClaw × DevClaw
+        Powered by Z.AI GLM · DevClaw
       </p>
     </div>
   );

@@ -11,9 +11,10 @@
   ],
   "scripts": {
     "build": "turbo run build",
-    "dev": "turbo run dev --concurrency=15",
-    "dev:servers": "turbo run dev --filter=openclaw-gateway --filter=orchestrator --filter=openclaw-engine --filter=agent-runner --filter=telegram-bot --filter=whatsapp-bot",
-    "build:servers": "turbo run build --filter=openclaw-gateway --filter=orchestrator --filter=openclaw-engine --filter=agent-runner --filter=telegram-bot --filter=whatsapp-bot",
+    "dev": "turbo run dev --concurrency=15 --filter=!ceoclaw-founder --filter=!dashboard",
+    "dev:core": "turbo run dev --concurrency=12 --filter=orchestrator --filter=agent-runner --filter=telegram-bot --filter=whatsapp-bot --filter=@devclaw/landing-page --filter=@devclaw/llm-router",
+    "dev:servers": "turbo run dev --filter=orchestrator --filter=agent-runner --filter=telegram-bot --filter=whatsapp-bot",
+    "build:servers": "turbo run build --filter=orchestrator --filter=agent-runner --filter=telegram-bot --filter=whatsapp-bot",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",

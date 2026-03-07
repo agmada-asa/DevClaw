@@ -1,30 +1,24 @@
 import { useState } from 'react';
 import LandingPage from './components/LandingPage';
+import AboutPage from './components/AboutPage';
 import LinksPage from './components/LinksPage';
-import AdminPage from './components/AdminPage';
-import SubscriptionPage from './components/SubscriptionPage';
 
-type Page = 'landing' | 'subscription' | 'links' | 'admin';
+type Page = 'landing' | 'about' | 'links';
 
 export default function App() {
   const [page, setPage] = useState<Page>('landing');
 
-  if (page === 'admin') return <AdminPage onBack={() => setPage('landing')} />;
-
   return (
     <div className="transition-opacity duration-300">
       {page === 'landing' ? (
-        <LandingPage
-          onEnter={() => setPage('subscription')}
-          onAdmin={() => setPage('admin')}
-        />
-      ) : page === 'subscription' ? (
-        <SubscriptionPage
+        <LandingPage onEnter={() => setPage('about')} />
+      ) : page === 'about' ? (
+        <AboutPage
           onBack={() => setPage('landing')}
-          onSubscribed={() => setPage('links')}
+          onGetStarted={() => setPage('links')}
         />
       ) : (
-        <LinksPage onBack={() => setPage('subscription')} />
+        <LinksPage onBack={() => setPage('about')} />
       )}
     </div>
   );

@@ -2,7 +2,6 @@ import CrabSVG from './CrabSVG';
 
 interface Props {
   onEnter: () => void;
-  onAdmin: () => void;
 }
 
 // Static star field — generated once, stable positions
@@ -63,17 +62,9 @@ const SOLUTIONS = [
   },
 ];
 
-export default function LandingPage({ onEnter, onAdmin }: Props) {
+export default function LandingPage({ onEnter }: Props) {
   return (
     <div className="bg-[#050505] select-none">
-
-      {/* ── Admin button — fixed top left, always visible ── */}
-      <button
-        onClick={onAdmin}
-        className="fixed top-6 left-6 z-50 text-[10px] text-white/20 hover:text-white/60 font-mono tracking-[0.2em] transition-colors duration-200"
-      >
-        ADMIN
-      </button>
 
       {/* ── Film grain overlay — fixed, covers all sections ── */}
       <div className="grain-overlay" aria-hidden="true" />
@@ -232,7 +223,7 @@ export default function LandingPage({ onEnter, onAdmin }: Props) {
 
         {/* Watermark — bottom right */}
         <p className="absolute bottom-8 right-8 text-[10px] text-white/20 font-mono tracking-[0.2em] z-20">
-          OPENCLAW
+          POWERED BY Z.AI GLM
         </p>
       </section>
 
@@ -393,7 +384,7 @@ export default function LandingPage({ onEnter, onAdmin }: Props) {
 
         {/* Footer note */}
         <p className="mt-8 text-[10px] text-white/15 font-mono tracking-[0.3em]">
-          UK AI AGENT HACK EP4 · OPENCLAW
+          POWERED BY Z.AI GLM · DEVCLAW
         </p>
       </section>
 
