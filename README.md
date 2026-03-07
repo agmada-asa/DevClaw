@@ -11,7 +11,7 @@ Built entirely on the **Z.AI GLM model ecosystem**, with each model matched to t
 
 ## Demo
 
-> Watch the 5-minute walkthrough: [Link to pitch video]
+> Watch the 5-minute walkthrough: [[Link to pitch video](https://youtu.be/A3JcPsXcmmM)]
 
 **Live flow:**
 1. User sends `/task Change homepage button text from "Start the journey" to "Start journey"` via WhatsApp
