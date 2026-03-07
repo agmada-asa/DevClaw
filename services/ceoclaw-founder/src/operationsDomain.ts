@@ -11,7 +11,8 @@
  *                           based on current state and feedback
  */
 
-import { runOpenClawPrompt, extractJsonObject } from './openclawRunner';
+import { chat } from '@devclaw/llm-router';
+import { extractJsonObject } from './openclawRunner';
 import {
     BusinessState,
     MetricsAnalysisOutput,
@@ -66,9 +67,14 @@ const parseMetricsAnalysis = (raw: string): MetricsAnalysisOutput => {
 };
 
 export const analyzeMetrics = async (state: BusinessState): Promise<MetricsAnalysisOutput> => {
-    console.log('[OperationsDomain] Analyzing metrics via OpenClaw...');
+    console.log('[OperationsDomain] Analyzing metrics via GLM...');
     const prompt = buildMetricsPrompt(state);
-    const raw = await runOpenClawPrompt(prompt, { timeoutMs: 60_000 });
+    const response = await chat({
+        role: 'orchestrator',
+        messages: [{ role: 'user', content: prompt }],
+        requestId: `ceoclaw-metrics-${Date.now()}`,
+    });
+    const raw = response.content;
     const output = parseMetricsAnalysis(raw);
     console.log(`[OperationsDomain] Bottleneck: ${output.bottleneck}`);
     console.log(`[OperationsDomain] MRR forecast: ${output.mrrForecast}`);
@@ -114,9 +120,14 @@ export const processFeedback = async (
     state: BusinessState,
     feedback?: string
 ): Promise<FeedbackResponseOutput> => {
-    console.log('[OperationsDomain] Processing feedback via OpenClaw...');
+    console.log('[OperationsDomain] Processing feedback via GLM...');
     const prompt = buildFeedbackPrompt(state, feedback);
-    const raw = await runOpenClawPrompt(prompt, { timeoutMs: 60_000 });
+    const response = await chat({
+        role: 'orchestrator',
+        messages: [{ role: 'user', content: prompt }],
+        requestId: `ceoclaw-feedback-${Date.now()}`,
+    });
+    const raw = response.content;
     const output = parseFeedbackResponse(raw);
     console.log(`[OperationsDomain] Feedback implication: ${output.productImplication}`);
     return output;
@@ -158,9 +169,14 @@ const parseIterationPlan = (raw: string): IterationPlanOutput => {
 };
 
 export const planIteration = async (state: BusinessState): Promise<IterationPlanOutput> => {
-    console.log('[OperationsDomain] Planning next iteration via OpenClaw...');
+    console.log('[OperationsDomain] Planning next iteration via GLM...');
     const prompt = buildIterationPrompt(state);
-    const raw = await runOpenClawPrompt(prompt, { timeoutMs: 60_000 });
+    const response = await chat({
+        role: 'orchestrator',
+        messages: [{ role: 'user', content: prompt }],
+        requestId: `ceoclaw-iteration-${Date.now()}`,
+    });
+    const raw = response.content;
     const output = parseIterationPlan(raw);
     console.log(`[OperationsDomain] Iteration: "${output.proposedFix}" (${output.estimatedEffort})`);
     return output;

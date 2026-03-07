@@ -330,15 +330,15 @@ export const runCampaign = async (campaignId: string): Promise<CampaignRunResult
     const campaign = await getCampaign(campaignId);
     if (!campaign) throw new Error(`Campaign ${campaignId} not found`);
 
-    if (campaign.status === 'running') {
-        throw new Error(`Campaign ${campaignId} is already running`);
-    }
     if (campaign.status === 'completed') {
         throw new Error(`Campaign ${campaignId} is already completed`);
     }
 
     const errors: string[] = [];
-    await updateCampaignStatus(campaignId, 'running');
+    // Status may already be 'running' if pre-set by the API handler — that's fine, skip the duplicate update
+    if (campaign.status !== 'running') {
+        await updateCampaignStatus(campaignId, 'running');
+    }
 
     try {
         // Stage 1: Discovery

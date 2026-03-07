@@ -163,6 +163,8 @@ app.post('/api/campaign/:id/run', async (req: Request, res: Response): Promise<a
     if (!campaign) return res.status(404).json({ error: 'Campaign not found' });
     if (campaign.status === 'running') return res.status(409).json({ error: 'Campaign already running' });
 
+    // Mark running in DB before responding so the next UI poll sees the correct state
+    await updateCampaignStatus(campaignId, 'running');
     res.status(202).json({ success: true, message: `Campaign "${campaign.name}" started.`, campaignId });
     runCampaign(campaignId)
         .then((r) => console.log(`[CEOClaw] Campaign ${campaignId}: sent=${r.messagesSent}`))

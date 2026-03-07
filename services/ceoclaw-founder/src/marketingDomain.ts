@@ -11,7 +11,8 @@
 
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { runOpenClawPrompt, extractJsonObject } from './openclawRunner';
+import { chat } from '@devclaw/llm-router';
+import { extractJsonObject } from './openclawRunner';
 import { BusinessState, SeoContentOutput, CampaignPlanOutput } from './founderTypes';
 
 const CONTENT_DIR = path.resolve(
@@ -78,7 +79,13 @@ export const writeSeoContent = async (state: BusinessState): Promise<SeoContentO
     const topic = pickSeoTopic(state);
     console.log(`[MarketingDomain] Writing SEO content on: "${topic}"`);
     const prompt = buildSeoContentPrompt(state, topic);
-    const raw = await runOpenClawPrompt(prompt, { timeoutMs: 3 * 60_000 });
+    const response = await chat({
+        role: 'planner',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.6,
+        requestId: `ceoclaw-seo-${Date.now()}`,
+    });
+    const raw = response.content;
     const output = parseSeoContent(raw);
 
     // Save to disk
@@ -141,9 +148,15 @@ const parseCampaignPlan = (raw: string): CampaignPlanOutput => {
 };
 
 export const planCampaign = async (state: BusinessState): Promise<CampaignPlanOutput> => {
-    console.log('[MarketingDomain] Planning outreach campaign via OpenClaw...');
+    console.log('[MarketingDomain] Planning outreach campaign via GLM...');
     const prompt = buildCampaignPrompt(state);
-    const raw = await runOpenClawPrompt(prompt, { timeoutMs: 90_000 });
+    const response = await chat({
+        role: 'orchestrator',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.7,
+        requestId: `ceoclaw-campaign-${Date.now()}`,
+    });
+    const raw = response.content;
     const output = parseCampaignPlan(raw);
 
     // Save campaign plan to disk
