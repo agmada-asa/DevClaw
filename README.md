@@ -124,7 +124,7 @@ services/
   agent-runner/     Generator/Reviewer loop + sandbox tests + security gate + GitHub push
 
 packages/
-  llm-router/       Z.AI provider routing: streaming SSE, retries, fallback, analytics
+  llm-router/       Z.AI provider routing: streaming SSE, retries, fallback, usage logging
   contracts/        Shared TypeScript interfaces (ArchitecturePlan, IntakeRequest)
   github-client/    Octokit wrapper: issues, branches, PRs, file tree
 
