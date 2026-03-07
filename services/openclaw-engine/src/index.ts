@@ -6,6 +6,8 @@ import { getOpenClawPlanningEngine } from './openclawPlanningEngine';
 import { getPlanStore } from './planStore';
 import { OpenClawPlanRecord } from './types';
 import { getExecutionDispatcher } from './executionDispatcher';
+import { indexRepo } from './ragIndexer';
+import { ragSearch, formatRagContext } from './ragSearch';
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
@@ -95,13 +97,29 @@ app.post('/api/plan', async (req: Request, res: Response): Promise<any> => {
     }
 
     try {
+        // Augment the file tree with semantically relevant file snippets from RAG
+        let augmentedFileTree: string[] | undefined = Array.isArray(repoFileTree) ? repoFileTree : undefined;
+        if (process.env.RAG_ENABLED !== 'false' && repo && description) {
+            try {
+                const ragResults = await ragSearch(String(repo), String(description), 8);
+                if (ragResults.length > 0) {
+                    const ragContext = formatRagContext(ragResults);
+                    // Prepend RAG context to the file tree so the planner sees it first
+                    augmentedFileTree = [ragContext, ...(augmentedFileTree ?? [])];
+                    console.log(`[OpenClawEngine][RAG] Injected ${ragResults.length} relevant files into planner context`);
+                }
+            } catch (ragErr: any) {
+                console.warn(`[OpenClawEngine][RAG] Search failed, proceeding without RAG: ${ragErr?.message}`);
+            }
+        }
+
         const created = await planningEngine.createPlan({
             requestId: String(requestId),
             userId: String(userId),
             repo: String(repo),
             description: String(description),
             issueNumber: typeof issueNumber === 'number' ? issueNumber : undefined,
-            repoFileTree: Array.isArray(repoFileTree) ? repoFileTree : undefined,
+            repoFileTree: augmentedFileTree,
         });
 
         const saved = await planStore.saveNewPlan({
@@ -239,6 +257,32 @@ app.post('/api/execute', async (req: Request, res: Response): Promise<any> => {
             detail,
         });
     }
+});
+
+// ─── POST /api/index-repo ─────────────────────────────────────────────────────
+/**
+ * Embeds repository files and upserts them into Supabase pgvector for RAG search.
+ * Called by the orchestrator after cloning a repo workspace.
+ *
+ * Body: { repo: string, workspacePath: string, files: string[] }
+ */
+app.post('/api/index-repo', async (req: Request, res: Response): Promise<any> => {
+    const { repo, workspacePath, files } = req.body || {};
+
+    if (!repo || !workspacePath || !Array.isArray(files)) {
+        return res.status(400).json({ error: 'Missing required fields: repo, workspacePath, files' });
+    }
+
+    // Acknowledge immediately — indexing is done asynchronously
+    res.status(202).json({ success: true, message: `RAG indexing started for ${repo} (${files.length} files)` });
+
+    indexRepo({ repo, workspacePath, files })
+        .then((result) => {
+            console.log(`[OpenClawEngine][RAG] Indexing complete for ${repo}: ${JSON.stringify(result)}`);
+        })
+        .catch((err) => {
+            console.error(`[OpenClawEngine][RAG] Indexing error for ${repo}: ${err?.message}`);
+        });
 });
 
 if (require.main === module) {

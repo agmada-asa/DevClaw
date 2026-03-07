@@ -434,6 +434,17 @@ app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
                     `[Orchestrator] Execution branch status for run ${updated.id}: ` +
                     `branch=${branchName} pushed=${String(pushed)}`
                 );
+
+                // Persist branch name and completion status for future /amend operations
+                if (supabase) {
+                    supabase.from('task_runs')
+                        .update({ status: 'completed', branch_name: branchName })
+                        .eq('id', updated.id)
+                        .then(({ error: dbErr }) => {
+                            if (dbErr) console.error('[Orchestrator] Failed to update completion status:', dbErr);
+                        });
+                }
+
                 if (updated.chat_id) {
                     const botUrl = resolveBotUrl(updated.channel);
                     if (botUrl) {
@@ -446,7 +457,8 @@ app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
                             `🌿 *Branch:* \`${branchName}\``,
                             `🔗 ${pushed ? branchUrl : '_Branch not pushed_'}`,
                             '',
-                            `_Review the changes and merge when ready._`,
+                            `_Review the changes and merge when ready, or use:_`,
+                            `✏️ /amend ${updated.plan_id} [instructions]`,
                         ].join('\n');
                         axios.post(`${botUrl}/api/send`, {
                             chatId: updated.chat_id,
@@ -457,6 +469,55 @@ app.post('/api/approve', async (req: Request, res: Response): Promise<any> => {
             }
             console.log(`[Orchestrator] Task ${updated.id} execution completed asynchronously.`);
         } catch (err: any) {
+            // Security gate blocked the execution
+            const secData = err?.response?.data;
+            if (err?.response?.status === 422 && secData?.error === 'security_blocked') {
+                console.warn(
+                    `[Orchestrator] Security gate BLOCKED runId=${updated.id}: ${secData.summary}`
+                );
+                if (supabase) {
+                    supabase
+                        .from('task_runs')
+                        .update({ status: 'security_blocked' })
+                        .eq('id', updated.id)
+                        .then(({ error: dbErr }) => {
+                            if (dbErr) console.error('[Orchestrator] Failed to mark security_blocked:', dbErr);
+                        });
+                }
+                if (updated.chat_id) {
+                    const botUrl = resolveBotUrl(updated.channel);
+                    if (botUrl) {
+                        const vulns: Array<{ severity: string; category: string; detail: string; file?: string }> =
+                            secData.vulnerabilities || [];
+                        const criticalOrHigh = vulns.filter(
+                            (v) => v.severity === 'critical' || v.severity === 'high'
+                        );
+                        const vulnLines = criticalOrHigh
+                            .slice(0, 5)
+                            .map(
+                                (v) =>
+                                    `• *[${v.severity.toUpperCase()}]* ${v.category}${v.file ? ` in \`${v.file}\`` : ''}: ${v.detail}`
+                            )
+                            .join('\n');
+                        const securityMessage = [
+                            `🛡️ *Security Gate Blocked*`,
+                            '',
+                            `The generated code was blocked before being pushed because our security reviewer found vulnerabilities.`,
+                            '',
+                            vulnLines || `_${secData.summary}_`,
+                            '',
+                            `Please refine your task description and try again with /task, or contact support if you believe this is a false positive.`,
+                        ].join('\n');
+                        axios.post(
+                            `${botUrl}/api/send`,
+                            { chatId: updated.chat_id, message: securityMessage },
+                            { timeout: ORCHESTRATOR_BOT_SEND_TIMEOUT_MS }
+                        ).catch(() => { });
+                    }
+                }
+                return;
+            }
+
             console.error('[Orchestrator] Failed to dispatch approved task for execution:', formatErrorDetails(err));
             if (updated.chat_id) {
                 const botUrl = resolveBotUrl(updated.channel);
@@ -605,6 +666,232 @@ app.post('/api/refine', async (req: Request, res: Response): Promise<any> => {
             }
         }
     })();
+});
+
+// ─── POST /api/pr-amend ──────────────────────────────────────────────────────
+app.post('/api/pr-amend', async (req: Request, res: Response): Promise<any> => {
+    const { planId, runId, amendment, userId, channel, chatId } = req.body;
+
+    if ((!planId && !runId) || !amendment) {
+        return res.status(400).json({ error: 'Must provide (planId or runId) and amendment instructions' });
+    }
+
+    if (!supabase) {
+        return res.status(500).json({ error: 'Supabase is not configured' });
+    }
+
+    const matchQuery = runId ? { id: runId } : { plan_id: planId };
+    const { data: existingRun, error } = await supabase
+        .from('task_runs')
+        .select('*')
+        .match(matchQuery)
+        .single();
+
+    if (error || !existingRun) {
+        return res.status(404).json({ error: 'Task run not found' });
+    }
+
+    if (existingRun.status !== 'completed') {
+        return res.status(400).json({
+            error: `Cannot amend task in status "${existingRun.status}". Task must be completed first.`
+        });
+    }
+
+    if (!existingRun.branch_name) {
+        return res.status(400).json({ error: 'No branch name stored for this task run. Cannot amend.' });
+    }
+
+    // Acknowledge immediately
+    res.status(200).json({
+        success: true,
+        message: `🔧 Amending branch \`${existingRun.branch_name}\` with your instructions... I'll message you when done.`
+    });
+
+    // Dispatch amendment in background
+    (async () => {
+        const targetChatId = chatId || existingRun.chat_id;
+        const targetChannel = channel || existingRun.channel;
+        const botUrl = resolveBotUrl(targetChannel);
+
+        try {
+            const amendRunId = `${existingRun.id}-amend-${Date.now()}`;
+            const approvedPlan = resolveApprovedPlan(existingRun.plan_details);
+            if (!approvedPlan) {
+                throw new Error('Original plan details not found for amendment.');
+            }
+
+            // Fetch github token for the user
+            let amendGithubToken: string | undefined;
+            if (supabase && (userId || existingRun.user_id)) {
+                const { data: userPrefs } = await supabase
+                    .from('user_preferences')
+                    .select('github_token')
+                    .eq('user_id', userId || existingRun.user_id)
+                    .single();
+                if (userPrefs?.github_token) {
+                    amendGithubToken = userPrefs.github_token;
+                }
+            }
+
+            const isolatedEnvironment = await provisionIsolatedExecutionEnvironment({
+                runId: amendRunId,
+                repoFullName: existingRun.repo,
+                planId: approvedPlan.planId || existingRun.plan_id,
+                description: amendment,
+                planDetails: existingRun.plan_details,
+                preferredBranchName: existingRun.branch_name,
+                githubToken: amendGithubToken,
+            });
+
+            const executionSubTasks = buildExecutionSubTasks(approvedPlan);
+
+            const execution = await orchestrationEngine.execute({
+                runId: amendRunId,
+                planId: approvedPlan.planId || existingRun.plan_id,
+                requestId: approvedPlan.requestId,
+                userId: userId || existingRun.user_id,
+                repo: existingRun.repo,
+                issueNumber: existingRun.issue_number,
+                issueUrl: existingRun.issue_url,
+                description: amendment,
+                planDetails: approvedPlan,
+                executionSubTasks,
+                isolatedEnvironmentPath: isolatedEnvironment.workspacePath,
+                executionBranchName: isolatedEnvironment.branchName,
+            });
+
+            const branchName = (execution.branchPush as any)?.branchName || existingRun.branch_name;
+            const pushed = (execution.branchPush as any)?.pushed;
+            const branchUrl = `https://github.com/${existingRun.repo}/tree/${branchName}`;
+
+            if (targetChatId && botUrl) {
+                const doneMessage = [
+                    `✅ *Amendment applied!*`,
+                    '',
+                    `Your changes have been added to branch \`${branchName}\`.`,
+                    `🔗 ${pushed ? branchUrl : '_Branch not pushed_'}`,
+                    '',
+                    `_Review the updated changes and merge when ready._`,
+                ].join('\n');
+                axios.post(`${botUrl}/api/send`, { chatId: targetChatId, message: doneMessage }, {
+                    timeout: ORCHESTRATOR_BOT_SEND_TIMEOUT_MS,
+                }).catch(() => { });
+            }
+        } catch (err: any) {
+            console.error('[Orchestrator] Amendment failed:', err?.message);
+            if (targetChatId && botUrl) {
+                axios.post(`${botUrl}/api/send`, {
+                    chatId: targetChatId,
+                    message: `❌ *Amendment failed*\n\n_${err?.message || 'Unknown error'}_\n\nPlease try again with /amend`,
+                }, { timeout: ORCHESTRATOR_BOT_SEND_TIMEOUT_MS }).catch(() => { });
+            }
+        }
+    })();
+});
+
+// ─── GET /api/tasks/recent ───────────────────────────────────────────────────
+app.get('/api/tasks/recent', async (req: Request, res: Response): Promise<any> => {
+    if (!supabase) {
+        return res.status(200).json({ tasks: [] });
+    }
+
+    const limit = Math.min(Number.parseInt((req.query.limit as string) || '20', 10), 100);
+
+    try {
+        const { data: rows, error } = await supabase
+            .from('task_runs')
+            .select('id, request_id, user_id, repo, description, status, pr_url, pr_number, created_at, updated_at')
+            .order('created_at', { ascending: false })
+            .limit(limit);
+
+        if (error) {
+            return res.status(500).json({ error: error.message });
+        }
+
+        const tasks = (rows ?? []).map((r: any) => ({
+            taskId:      r.id,
+            requestId:   r.request_id,
+            userId:      r.user_id,
+            repo:        r.repo,
+            description: r.description,
+            status:      r.status,
+            prUrl:       r.pr_url,
+            prNumber:    r.pr_number,
+            startedAt:   r.created_at,
+            completedAt: r.updated_at,
+        }));
+
+        return res.status(200).json({ tasks });
+    } catch (err: any) {
+        return res.status(500).json({ error: err.message });
+    }
+});
+
+// ─── GET /api/analytics ──────────────────────────────────────────────────────
+app.get('/api/analytics', async (_req: Request, res: Response): Promise<any> => {
+    if (!supabase) {
+        return res.status(503).json({ error: 'Supabase not configured' });
+    }
+
+    try {
+        // Aggregate totals per (role, provider, model)
+        const { data: rows, error } = await supabase
+            .from('llm_usage_logs')
+            .select('role, provider, model, tokens_used, cost_usd, latency_ms, created_at')
+            .order('created_at', { ascending: false })
+            .limit(1000);
+
+        if (error) {
+            return res.status(500).json({ error: error.message });
+        }
+
+        const totalTokens = rows?.reduce((s, r) => s + (r.tokens_used || 0), 0) ?? 0;
+        const totalCostUsd = rows?.reduce((s, r) => s + (Number(r.cost_usd) || 0), 0) ?? 0;
+        const avgLatencyMs = rows?.length
+            ? Math.round(rows.reduce((s, r) => s + (r.latency_ms || 0), 0) / rows.length)
+            : 0;
+
+        // Breakdown by role
+        const byRole: Record<string, { calls: number; tokens: number; costUsd: number }> = {};
+        for (const r of rows ?? []) {
+            const bucket = byRole[r.role] ?? { calls: 0, tokens: 0, costUsd: 0 };
+            bucket.calls += 1;
+            bucket.tokens += r.tokens_used || 0;
+            bucket.costUsd += Number(r.cost_usd) || 0;
+            byRole[r.role] = bucket;
+        }
+
+        // Breakdown by provider
+        const byProvider: Record<string, { calls: number; tokens: number }> = {};
+        for (const r of rows ?? []) {
+            const bucket = byProvider[r.provider] ?? { calls: 0, tokens: 0 };
+            bucket.calls += 1;
+            bucket.tokens += r.tokens_used || 0;
+            byProvider[r.provider] = bucket;
+        }
+
+        return res.status(200).json({
+            summary: {
+                totalCalls: rows?.length ?? 0,
+                totalTokens,
+                totalCostUsd: Number(totalCostUsd.toFixed(6)),
+                avgLatencyMs,
+            },
+            byRole,
+            byProvider,
+            recentCalls: (rows ?? []).slice(0, 20).map((r) => ({
+                role:       r.role,
+                provider:   r.provider,
+                model:      r.model,
+                tokensUsed: r.tokens_used,
+                costUsd:    r.cost_usd != null ? Number(Number(r.cost_usd).toFixed(6)) : null,
+                latencyMs:  r.latency_ms,
+                createdAt:  r.created_at,
+            })),
+        });
+    } catch (err: any) {
+        return res.status(500).json({ error: err.message || 'Failed to fetch analytics' });
+    }
 });
 
 // ─── Server Boot ─────────────────────────────────────────────────────────────

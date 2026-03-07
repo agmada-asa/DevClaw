@@ -28,6 +28,17 @@ interface GatewayStatus {
   uptime: number;
 }
 
+interface AnalyticsData {
+  summary: {
+    totalCalls: number;
+    totalTokens: number;
+    totalCostUsd: number;
+    avgLatencyMs: number;
+  };
+  byRole: Record<string, { calls: number; tokens: number; costUsd: number }>;
+  byProvider: Record<string, { calls: number; tokens: number }>;
+}
+
 // ─── GLM model map (mirrors packages/llm-router/src/config.ts) ───────────────
 
 const GLM_ROLES = [
@@ -158,14 +169,16 @@ function GlmModelCard({ role, model, via, label, color, bg }: typeof GLM_ROLES[0
 export default function App() {
   const [gatewayStatus, setGatewayStatus] = useState<GatewayStatus | null>(null);
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
 
   const fetchStatus = useCallback(async () => {
     try {
-      const [statusRes, tasksRes] = await Promise.allSettled([
+      const [statusRes, tasksRes, analyticsRes] = await Promise.allSettled([
         fetch(`${API}/health`),
         fetch(`${API}/api/tasks/recent?limit=20`),
+        fetch(`${API}/api/analytics`),
       ]);
 
       if (statusRes.status === 'fulfilled' && statusRes.value.ok) {
@@ -176,6 +189,11 @@ export default function App() {
       if (tasksRes.status === 'fulfilled' && tasksRes.value.ok) {
         const data = await tasksRes.value.json();
         setTasks(data.tasks ?? []);
+      }
+
+      if (analyticsRes.status === 'fulfilled' && analyticsRes.value.ok) {
+        const data = await analyticsRes.value.json();
+        if (data.summary) setAnalytics(data);
       }
 
       setError(null);
@@ -251,6 +269,72 @@ export default function App() {
             sub={gatewayStatus ? `uptime ${Math.floor((gatewayStatus.uptime ?? 0) / 60)}m` : undefined}
           />
         </div>
+
+        {/* Analytics panel */}
+        {analytics && (
+          <section className="bg-slate-900 border border-slate-800 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-200">GLM Usage Analytics</h2>
+                <p className="text-xs text-slate-500 mt-0.5">Token usage & estimated cost across all Z.AI model calls</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              <div className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-3">
+                <p className="text-xs text-slate-500">Total Calls</p>
+                <p className="text-xl font-semibold text-white mt-0.5">{analytics.summary.totalCalls.toLocaleString()}</p>
+              </div>
+              <div className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-3">
+                <p className="text-xs text-slate-500">Total Tokens</p>
+                <p className="text-xl font-semibold text-white mt-0.5">{analytics.summary.totalTokens.toLocaleString()}</p>
+              </div>
+              <div className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-3">
+                <p className="text-xs text-slate-500">Est. Cost (USD)</p>
+                <p className="text-xl font-semibold text-emerald-400 mt-0.5">${analytics.summary.totalCostUsd.toFixed(4)}</p>
+              </div>
+              <div className="bg-slate-800/50 border border-slate-700/50 rounded-lg p-3">
+                <p className="text-xs text-slate-500">Avg Latency</p>
+                <p className="text-xl font-semibold text-sky-400 mt-0.5">{analytics.summary.avgLatencyMs.toLocaleString()}ms</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wider font-medium mb-2">By Role</p>
+                <div className="space-y-1">
+                  {Object.entries(analytics.byRole).map(([role, data]) => (
+                    <div key={role} className="flex items-center gap-2 text-xs">
+                      <span className="font-mono text-violet-400 w-28 flex-shrink-0 truncate">{role}</span>
+                      <div className="flex-1 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className="h-full bg-violet-500 rounded-full"
+                          style={{ width: `${Math.min(100, (data.tokens / Math.max(1, analytics.summary.totalTokens)) * 100)}%` }}
+                        />
+                      </div>
+                      <span className="text-slate-500 w-20 text-right">{data.tokens.toLocaleString()} tok</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs text-slate-500 uppercase tracking-wider font-medium mb-2">By Provider</p>
+                <div className="space-y-1">
+                  {Object.entries(analytics.byProvider).map(([provider, data]) => (
+                    <div key={provider} className="flex items-center gap-2 text-xs">
+                      <span className="font-mono text-sky-400 w-24 flex-shrink-0">{provider}</span>
+                      <div className="flex-1 bg-slate-800 rounded-full h-1.5 overflow-hidden">
+                        <div
+                          className="h-full bg-sky-500 rounded-full"
+                          style={{ width: `${Math.min(100, (data.calls / Math.max(1, analytics.summary.totalCalls)) * 100)}%` }}
+                        />
+                      </div>
+                      <span className="text-slate-500 w-16 text-right">{data.calls} calls</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </section>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 

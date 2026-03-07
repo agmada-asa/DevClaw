@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { getExecutionPlugin } from './executionPlugin';
 import { ExecutionCoordinator } from './executionCoordinator';
+import { SecurityVulnerabilityError } from './securityReviewer';
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
@@ -101,6 +102,20 @@ app.post('/api/execute', async (req: Request, res: Response): Promise<any> => {
                 : {}),
         });
     } catch (err: any) {
+        if (err instanceof SecurityVulnerabilityError) {
+            console.warn(
+                `[AgentRunner][SecurityGate] BLOCKED runId=${runId} — ` +
+                `${err.result.vulnerabilities.length} vuln(s): ${err.result.summary}`
+            );
+            return res.status(422).json({
+                error: 'security_blocked',
+                summary: err.result.summary,
+                vulnerabilities: err.result.vulnerabilities,
+                model: err.result.model,
+                provider: err.result.provider,
+                runId: err.runId,
+            });
+        }
         console.error(`[AgentRunner] Failed to dispatch execution for runId=${runId}: ${formatExecutionError(err)}`);
         return res.status(502).json({ error: 'Failed to dispatch execution run' });
     }

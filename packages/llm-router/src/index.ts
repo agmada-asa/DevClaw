@@ -5,6 +5,7 @@ import { RouterError, ProviderHttpError, ProviderTimeoutError } from './errors';
 import { callVenice } from './providers/venice';
 import { callZai } from './providers/zai';
 import { callOpenRouter } from './providers/openrouter';
+import { logUsage } from './analytics';
 
 const toCompactJson = (value: unknown, fallback = 'n/a'): string => {
   if (value === undefined) return fallback;
@@ -140,7 +141,18 @@ export async function chat(req: ChatRequest): Promise<ChatResponse> {
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     attemptsMade = attempt;
     try {
-      return await callProvider(config.provider, config.modelId, req, timeoutMs);
+      const t0 = Date.now();
+      const response = await callProvider(config.provider, config.modelId, req, timeoutMs);
+      logUsage({
+        runId: (req as any).runId,
+        requestId: req.requestId,
+        role: req.role,
+        provider: response.provider,
+        model: response.model,
+        tokensUsed: response.tokensUsed,
+        latencyMs: Date.now() - t0,
+      }).catch(() => { });
+      return response;
     } catch (err) {
       lastErr = err;
       const retryable = shouldFallback(err, fallbackOn);
@@ -158,7 +170,18 @@ export async function chat(req: ChatRequest): Promise<ChatResponse> {
       `[llm-router] Primary "${config.provider}" exhausted for role "${req.role}" — ` +
       `falling back to "${config.fallback.provider}". Reason: ${describeError(lastErr)}`,
     );
-    return await callProvider(config.fallback.provider, config.fallback.modelId, req, timeoutMs);
+    const t0 = Date.now();
+    const response = await callProvider(config.fallback.provider, config.fallback.modelId, req, timeoutMs);
+    logUsage({
+      runId: (req as any).runId,
+      requestId: req.requestId,
+      role: req.role,
+      provider: response.provider,
+      model: response.model,
+      tokensUsed: response.tokensUsed,
+      latencyMs: Date.now() - t0,
+    }).catch(() => { });
+    return response;
   }
 
   console.error(
@@ -171,3 +194,4 @@ export async function chat(req: ChatRequest): Promise<ChatResponse> {
 // Re-export types so callers don't need to import from internal paths.
 export type { ChatRequest, ChatResponse, ChatMessage, ModelRole, Provider } from './types';
 export { RouterError, ProviderHttpError, ProviderTimeoutError } from './errors';
+export { callZaiEmbedding } from './providers/zai';

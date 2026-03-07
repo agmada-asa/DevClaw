@@ -28,7 +28,7 @@ const resolveGatewayTimeoutMs = (type: string): number => {
     if (type === 'approve') {
         return BOT_GATEWAY_APPROVAL_TIMEOUT_MS;
     }
-    if (type === 'refine') {
+    if (type === 'refine' || type === 'amend') {
         return BOT_GATEWAY_REFINE_TIMEOUT_MS;
     }
     return BOT_GATEWAY_TIMEOUT_MS;
@@ -118,10 +118,11 @@ export const handleMessage = async (message: any) => {
     const isApproveRequest = tLower.startsWith('/approve ') || tLower === '/approve';
     const isRejectRequest = tLower.startsWith('/reject ') || tLower === '/reject';
     const isRefineRequest = tLower.startsWith('/refine ') || tLower === '/refine';
+    const isAmendRequest = tLower.startsWith('/amend ') || tLower === '/amend';
 
     if (!isTaskRequest && !isRepoLinkRequest && !isReposListRequest && !isStatusRequest &&
-        !isApproveRequest && !isRejectRequest && !isRefineRequest) {
-        return message.reply(`I didn't understand that. 🤔\n\nUse /help to see available commands, or /task [description] to create a new task.`);
+        !isApproveRequest && !isRejectRequest && !isRefineRequest && !isAmendRequest) {
+        return message.reply(`I didn't understand that.\n\nUse /help to see available commands, or /task [description] to create a new task.`);
     }
 
     try {
@@ -139,7 +140,8 @@ export const handleMessage = async (message: any) => {
                     isStatusRequest ? 'status' :
                         isApproveRequest ? 'approve' :
                             isRejectRequest ? 'reject' :
-                                isRefineRequest ? 'refine' : 'task'
+                                isRefineRequest ? 'refine' :
+                                    isAmendRequest ? 'amend' : 'task'
         };
 
         const GATEWAY_URL = process.env.GATEWAY_URL || 'http://localhost:3001/api/ingress/message';
@@ -165,6 +167,8 @@ export const handleMessage = async (message: any) => {
                     replyMessage = '❌ Plan cancelled.';
                 } else if (isRefineRequest) {
                     replyMessage = '⚙️ Refining the plan with your instructions...';
+                } else if (isAmendRequest) {
+                    replyMessage = '🔧 Amendment received! Applying changes to your branch...';
                 } else {
                     replyMessage = '🤖 Task received! Generating an architecture plan...';
                 }

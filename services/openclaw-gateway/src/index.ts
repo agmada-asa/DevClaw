@@ -387,6 +387,37 @@ app.post('/api/ingress/message', async (req: Request, res: Response): Promise<an
         }
     }
 
+    if (payload.type === 'amend') {
+        const parts = text.split(' ');
+        if (parts.length < 3) {
+            return res.status(200).json({
+                success: false,
+                message: 'Invalid amend format. Use /amend <planId> <instructions>',
+            });
+        }
+        const planId = parts[1].trim();
+        const amendment = parts.slice(2).join(' ').trim();
+
+        try {
+            console.log(`[Gateway] Dispatching amend for plan ${planId}`);
+            const orchResponse = await postToOrchestrator('/api/pr-amend', {
+                planId,
+                amendment,
+                userId,
+                channel: provider,
+                chatId: payload.chatId ? payload.chatId.toString() : '',
+            }, GATEWAY_ORCHESTRATOR_APPROVE_TIMEOUT_MS);
+            return res.status(200).json(orchResponse);
+        } catch (err: any) {
+            const detail = err.response?.data?.error || err.message;
+            console.error('[Gateway] Orchestrator amend failed:', detail);
+            return res.status(200).json({
+                success: false,
+                message: `Failed to process amendment: ${detail}`,
+            });
+        }
+    }
+
     if (payload.type === 'task') {
         // ── Validate user has a linked repo and GitHub token ──────────────────
         if (!supabase) {
@@ -479,6 +510,29 @@ app.post('/api/ingress/message', async (req: Request, res: Response): Promise<an
 // Health check endpoint
 app.get('/health', (req: Request, res: Response) => {
     res.status(200).json({ status: 'ok' });
+});
+
+// ─── Proxy: recent tasks (for dashboard) ─────────────────────────────────────
+app.get('/api/tasks/recent', async (req: Request, res: Response): Promise<any> => {
+    const orchestratorUrl = (process.env.ORCHESTRATOR_URL || 'http://localhost:3010').replace(/\/$/, '');
+    try {
+        const limit = Number.parseInt((req.query.limit as string) || '20', 10);
+        const orchRes = await axios.get(`${orchestratorUrl}/api/tasks/recent?limit=${limit}`, { timeout: 15_000 });
+        return res.status(200).json(orchRes.data);
+    } catch {
+        return res.status(200).json({ tasks: [] });
+    }
+});
+
+// ─── Proxy: analytics (for dashboard) ────────────────────────────────────────
+app.get('/api/analytics', async (_req: Request, res: Response): Promise<any> => {
+    const orchestratorUrl = (process.env.ORCHESTRATOR_URL || 'http://localhost:3010').replace(/\/$/, '');
+    try {
+        const orchRes = await axios.get(`${orchestratorUrl}/api/analytics`, { timeout: 15_000 });
+        return res.status(200).json(orchRes.data);
+    } catch (err: any) {
+        return res.status(503).json({ error: 'Analytics unavailable' });
+    }
 });
 
 // Only start the server if not imported as a module (useful for testing)

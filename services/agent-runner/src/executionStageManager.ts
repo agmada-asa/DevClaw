@@ -21,6 +21,8 @@ import {
     ExecutePayload,
     ExecutionSubTask,
 } from './executionPlugin';
+import { SecurityReviewAgent, SecurityVulnerabilityError } from './securityReviewer';
+import { SandboxTestRunner } from './sandboxRunner';
 
 const execFileAsync = promisify(execFile);
 
@@ -509,6 +511,25 @@ export class ExecutionStageManager {
         const patch = (await this.runGit(['diff', `${baseCommit}..${headCommit}`], workspacePath)).stdout;
         const patchSetRef = `${payload.runId}:${headCommit.slice(0, 12)}`;
 
+        // Security gate — scan the full diff for OWASP Top 10 vulnerabilities before pushing
+        if (process.env.SECURITY_SCAN_ENABLED !== 'false') {
+            const securityAgent = new SecurityReviewAgent();
+            const allChangedFiles = approvedSubTasks.flatMap((s) => s.filesChanged);
+            const scanResult = await securityAgent.scan({
+                runId: payload.runId,
+                requestId: payload.requestId,
+                diff: patch,
+                affectedFiles: allChangedFiles,
+                description: payload.description,
+            });
+            if (!scanResult.passed) {
+                throw new SecurityVulnerabilityError(scanResult, payload.runId);
+            }
+            console.log(
+                `[AgentRunner][SecurityGate] runId=${payload.runId} passed — ${scanResult.summary}`
+            );
+        }
+
         const branchPush = await this.pushExecutionBranch(workspacePath, branchName, headCommit);
         const approvedPatchSet: ApprovedPatchSet = {
             patchSetRef,
@@ -743,6 +764,35 @@ export class ExecutionStageManager {
                 console.log(
                     `[AgentRunner][ExecutionStage] subTask=${subTask.id} approved and committed sha=${commitSha}`
                 );
+
+                // Sandbox auto-test: run build + tests inside Docker; feed failures back as reviewer notes
+                const sandboxRunner = new SandboxTestRunner();
+                const sandboxResult = await sandboxRunner.run(workspacePath, payload.runId);
+                if (!sandboxResult.skipped && !sandboxResult.passed) {
+                    console.warn(
+                        `[SandboxRunner] subTask=${subTask.id} iteration=${iteration} ` +
+                        `build/test FAILED exitCode=${sandboxResult.exitCode} — regenerating`
+                    );
+                    // Undo the commit so the generator can try again cleanly
+                    await this.runGit(['reset', '--soft', 'HEAD~1'], workspacePath);
+                    reviewerNotes = [
+                        `Build or test suite FAILED after your changes (exit code ${sandboxResult.exitCode}).`,
+                        'Fix the errors below before re-generating:',
+                        '```',
+                        sandboxResult.combinedOutput.slice(0, 3000),
+                        '```',
+                    ];
+                    finalDecision = 'REWRITE';
+                    trace.push(this.syntheticRewriteTrace(
+                        iteration,
+                        pair.generator.name,
+                        pair.reviewer.name,
+                        generation.model,
+                        generation.provider,
+                        `Sandbox test failed: exitCode=${sandboxResult.exitCode}`
+                    ));
+                    continue;
+                }
 
                 return {
                     report: {

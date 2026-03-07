@@ -1,6 +1,37 @@
 import axios from 'axios';
 import { ChatMessage, ChatResponse } from '../types';
 
+/**
+ * Generates a text embedding vector via Z.AI's embedding endpoint.
+ * Uses the `embedding-3` model which produces 2048-dim vectors by default.
+ */
+export async function callZaiEmbedding(
+  text: string,
+  modelId = process.env.ZAI_EMBEDDING_MODEL || 'embedding-3',
+  dimensions = 1536,
+): Promise<number[]> {
+  const apiKey = process.env.ZAI_API_KEY;
+  if (!apiKey) throw new Error('[llm-router] ZAI_API_KEY is not set');
+
+  const response = await axios.post(
+    `${process.env.ZAI_BASE_URL ?? 'https://open.bigmodel.cn/api/paas/v4'}/embeddings`,
+    { model: modelId, input: text, dimensions },
+    {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 30_000,
+    },
+  );
+
+  const embedding: number[] | undefined = response.data?.data?.[0]?.embedding;
+  if (!embedding || embedding.length === 0) {
+    throw new Error('[llm-router] Z.AI embedding response missing data');
+  }
+  return embedding;
+}
+
 // Z.AI (Zhipu AI) hosts GLM-4, used for the architecture planner role.
 // Their API is OpenAI-compatible.
 const BASE_URL = process.env.ZAI_BASE_URL ?? 'https://open.bigmodel.cn/api/paas/v4';

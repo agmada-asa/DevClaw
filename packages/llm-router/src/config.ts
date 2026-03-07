@@ -142,4 +142,20 @@ export const MODEL_CONFIG: Record<ModelRole, ModelConfig> = {
     policy: LONGCTX_POLICY,
   },
 
+  // ── DevClaw: security gate ────────────────────────────────────────────────────
+  // glm-4.7 via OpenRouter — OWASP Top 10 vulnerability scan on final diff.
+  // Uses the full reasoning model to detect injection, secrets, auth flaws, etc.
+  // Falls back to glm-4.7-flash direct if OpenRouter is unavailable.
+
+  security_reviewer: {
+    provider: 'openrouter',
+    modelId: process.env.SECURITY_MODEL || OR_REASONING_MODEL,
+    fallback: { provider: 'zai', modelId: ZAI_FLASH_MODEL },
+    policy: {
+      timeoutMs: 240_000,
+      maxRetries: 1,
+      fallbackOn: ['timeout', 'http5xx', 'http429'],
+    },
+  },
+
 };

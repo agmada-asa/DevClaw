@@ -8,7 +8,8 @@ export type ModelRole =
   | 'backend_generator'
   | 'backend_reviewer'
   | 'orchestrator'
-  | 'planner';
+  | 'planner'
+  | 'security_reviewer';
 
 // The actual AI provider companies.
 // Z.AI is the core engine. OpenRouter is the fallback route to the same GLM models.

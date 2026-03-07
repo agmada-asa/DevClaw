@@ -34,7 +34,7 @@ const resolveGatewayTimeoutMs = (type: string): number => {
     if (type === 'approve') {
         return BOT_GATEWAY_APPROVAL_TIMEOUT_MS;
     }
-    if (type === 'refine') {
+    if (type === 'refine' || type === 'amend') {
         return BOT_GATEWAY_REFINE_TIMEOUT_MS;
     }
     return BOT_GATEWAY_TIMEOUT_MS;
@@ -100,9 +100,10 @@ export const handleTextMessage = async (ctx: Context<any>) => {
     const isApproveRequest = tLower.startsWith('/approve ') || tLower === '/approve';
     const isRejectRequest = tLower.startsWith('/reject ') || tLower === '/reject';
     const isRefineRequest = tLower.startsWith('/refine ') || tLower === '/refine';
+    const isAmendRequest = tLower.startsWith('/amend ') || tLower === '/amend';
 
     if (!isTaskRequest && !isRepoLinkRequest && !isReposListRequest && !isStatusRequest &&
-        !isApproveRequest && !isRejectRequest && !isRefineRequest) {
+        !isApproveRequest && !isRejectRequest && !isRefineRequest && !isAmendRequest) {
         return ctx.reply('Invalid command. Please use /help to see the list of available commands and the setup flow.');
     }
 
@@ -118,7 +119,8 @@ export const handleTextMessage = async (ctx: Context<any>) => {
                 isStatusRequest ? 'status' :
                     isApproveRequest ? 'approve' :
                         isRejectRequest ? 'reject' :
-                            isRefineRequest ? 'refine' : 'task'
+                            isRefineRequest ? 'refine' :
+                                isAmendRequest ? 'amend' : 'task'
     };
 
     try {
@@ -145,6 +147,8 @@ export const handleTextMessage = async (ctx: Context<any>) => {
                     replyMessage = 'Rejection sent to gateway.';
                 } else if (isRefineRequest) {
                     replyMessage = 'Refinement request sent to gateway. Evaluating...';
+                } else if (isAmendRequest) {
+                    replyMessage = '🔧 Amendment request received! Applying changes to your branch...';
                 } else {
                     replyMessage = 'Task received and sent to gateway. Evaluating...';
                 }
@@ -179,6 +183,7 @@ bot.command('request', (ctx) => handleTextMessage(ctx));
 bot.command('approve', (ctx) => handleTextMessage(ctx));
 bot.command('reject', (ctx) => handleTextMessage(ctx));
 bot.command('refine', (ctx) => handleTextMessage(ctx));
+bot.command('amend', (ctx) => handleTextMessage(ctx));
 
 // Also keep the generic text handler as a catch-all for any messages
 bot.on('text', handleTextMessage);
